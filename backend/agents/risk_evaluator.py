@@ -10,19 +10,13 @@ from services.geo_matcher import match_disruptions_to_shipments, compute_risk_sc
 SHIPMENTS_PATH = os.path.join(os.path.dirname(__file__), "..", "data", "shipments.json")
 
 
-def load_shipments() -> list[dict]:
-    with open(SHIPMENTS_PATH, "r") as f:
-        return json.load(f)
-
-
-def evaluate_shipment_risks(analyzed_disruptions: list[dict]) -> list[dict]:
+def evaluate_shipment_risks(analyzed_disruptions: list[dict], shipments: list[dict]) -> list[dict]:
     """
     Agent 3 main function: Evaluate risk for every shipment against all disruptions.
     Produces a risk record per affected shipment.
     """
-    print("[RiskEvaluatorAgent] Loading shipments and evaluating risks...")
+    print("[RiskEvaluatorAgent] Evaluating risks for shipments...")
 
-    shipments = load_shipments()
     matches = match_disruptions_to_shipments(analyzed_disruptions, shipments, radius_km=150)
 
     # Build per-shipment worst-case risk (a shipment may be near multiple disruptions)

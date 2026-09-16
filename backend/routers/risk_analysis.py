@@ -1,52 +1,78 @@
-"""GET /risk-analysis — returns risk analysis results from Redis cache, or runs synchronously as fallback."""
-from fastapi import APIRouter
-import redis
 import json
 import os
-import asyncio
-from agents.data_collector import collect_disruptions
-from agents.disruption_analyzer import analyze_disruptions
-from agents.risk_evaluator import evaluate_shipment_risks
-from agents.recommendation import generate_recommendations
+import time
+
+from fastapi import APIRouter, Depends
+from motor.motor_asyncio import AsyncIOMotorDatabase
+import redis
+
+from database import get_database
+from pipeline import run_pipeline
+from routers.auth import get_current_user, owner_id_from_user
+import crud
 
 router = APIRouter()
-REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+REDIS_URL = os.getenv("REDIS_URL", "redis://127.0.0.1:6379/0")
+
+# In-memory cache fallback when Redis is offline (prevents proxy timeouts)
+_MEM_CACHE: dict[str, tuple[float, dict]] = {}
+CACHE_TTL = 120.0  # 2 minutes cache
 
 
-async def _run_pipeline_sync() -> dict:
-    """Run the full 4-agent pipeline synchronously as a fallback."""
-    collected = await collect_disruptions()
-    analyzed = await analyze_disruptions(collected["disruptions"])
-    risk_records = evaluate_shipment_risks(analyzed)
-    recommendations = await generate_recommendations(risk_records)
+def _cache_key(owner_id: str) -> str:
+    return f"latest_risk_analysis:{owner_id}"
 
-    risk_counts = {"HIGH": 0, "MEDIUM": 0, "LOW": 0, "SAFE": 0}
-    for r in recommendations:
-        level = r.get("risk_level", "SAFE")
-        risk_counts[level] = risk_counts.get(level, 0) + 1
 
-    return {
-        "pipeline": {
-            "disruptions_collected": len(analyzed),
-            "shipments_evaluated": len(recommendations),
-            "risk_breakdown": risk_counts,
-            "collector_reasoning": collected.get("reasoning", ""),
-        },
-        "recommendations": recommendations,
-    }
+def _redis():
+    return redis.Redis.from_url(REDIS_URL, decode_responses=True, socket_connect_timeout=1)
 
 
 @router.get("/risk-analysis")
-async def get_risk_analysis():
-    # 1. Try to get cached result from Redis first
-    try:
-        redis_client = redis.Redis.from_url(REDIS_URL, decode_responses=True, socket_connect_timeout=1)
-        cached_result = redis_client.get("latest_risk_analysis")
-        if cached_result:
-            return json.loads(cached_result)
-    except Exception:
-        pass  # Redis not available — fall through to synchronous execution
+async def get_risk_analysis(
+    db: AsyncIOMotorDatabase = Depends(get_database),
+    current_user: dict = Depends(get_current_user),
+):
+    owner_id = owner_id_from_user(current_user)
 
-    # 2. Synchronous fallback: run all 4 agents directly
-    result = await _run_pipeline_sync()
+    # 1. Try Redis cache
+    try:
+        cached = _redis().get(_cache_key(owner_id))
+        if cached:
+            return json.loads(cached)
+    except Exception:
+        pass
+
+    # 2. Try In-Memory cache
+    now = time.time()
+    if owner_id in _MEM_CACHE:
+        ts, data = _MEM_CACHE[owner_id]
+        if now - ts < CACHE_TTL:
+            return data
+
+    # 3. Compute live pipeline
+    shipments = await crud.get_shipments(db, owner_id)
+    result = await run_pipeline(shipments)
+    _MEM_CACHE[owner_id] = (now, result)
     return result
+
+
+@router.post("/risk-analysis/run")
+async def run_risk_analysis(
+    db: AsyncIOMotorDatabase = Depends(get_database),
+    current_user: dict = Depends(get_current_user),
+):
+    owner_id = owner_id_from_user(current_user)
+    shipments = await crud.get_shipments(db, owner_id)
+    result = await run_pipeline(shipments)
+
+    # Update in-memory cache
+    _MEM_CACHE[owner_id] = (time.time(), result)
+
+    try:
+        client = _redis()
+        client.setex(_cache_key(owner_id), 3600, json.dumps(result, default=str))
+        client.publish("risk_updates", json.dumps({"status": "updated", "owner_id": owner_id}))
+    except Exception:
+        pass
+    return result
+

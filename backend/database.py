@@ -1,27 +1,31 @@
-import os
-from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
-from sqlalchemy.orm import declarative_base
-from dotenv import load_dotenv
+from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 
-load_dotenv()
+from config import MONGODB_DB_NAME, MONGODB_URL
 
-# We will use Postgres in Docker, but fallback to SQLite for local rapid dev if DB_URL is missing
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./hackathon.db")
+client: AsyncIOMotorClient | None = None
 
-engine = create_async_engine(
-    DATABASE_URL,
-    echo=False,
-    future=True,
-    # connect_args={"check_same_thread": False} if using sqlite
-    **({"connect_args": {"check_same_thread": False}} if "sqlite" in DATABASE_URL else {})
-)
 
-AsyncSessionLocal = async_sessionmaker(
-    engine, class_=AsyncSession, expire_on_commit=False
-)
+def get_client() -> AsyncIOMotorClient:
+    global client
+    if client is None:
+        client = AsyncIOMotorClient(MONGODB_URL, serverSelectionTimeoutMS=5000)
+    return client
 
-Base = declarative_base()
 
-async def get_db():
-    async with AsyncSessionLocal() as session:
-        yield session
+def get_database() -> AsyncIOMotorDatabase:
+    return get_client()[MONGODB_DB_NAME]
+
+
+async def connect_db() -> None:
+    global client
+    client = AsyncIOMotorClient(MONGODB_URL, serverSelectionTimeoutMS=5000)
+    await client.admin.command("ping")
+    print(f"[MongoDB] Connected to {MONGODB_URL} (db={MONGODB_DB_NAME})")
+
+
+async def close_db() -> None:
+    global client
+    if client:
+        client.close()
+        client = None
+        print("[MongoDB] Connection closed.")

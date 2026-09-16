@@ -2,139 +2,77 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
-  --cyber-bg: #050510;
-  --cyber-cyan: #00f0ff;
-  --cyber-pink: #ff003c;
-  --cyber-yellow: #fcee0a;
-  --cyber-green: #00ff41;
-  --cyber-purple: #9d44fd;
-}
-
 * { box-sizing: border-box; }
 html, body { 
   margin: 0; 
   padding: 0; 
-  background-color: var(--cyber-bg);
+  background-color: #f8fafc; /* slate-50 */
 }
 
 body {
-  color: #e0f2ff;
-  font-family: var(--font-rajdhani), system-ui, sans-serif;
+  color: #0f172a; /* slate-900 */
+  font-family: Inter, system-ui, sans-serif;
   min-height: 100vh;
-  /* Cyber Grid Background */
-  background-image: 
-    linear-gradient(to right, rgba(0, 240, 255, 0.03) 1px, transparent 1px),
-    linear-gradient(to bottom, rgba(0, 240, 255, 0.03) 1px, transparent 1px);
-  background-size: 40px 40px;
-  background-position: center center;
-  position: relative;
-}
-
-/* Subtle glowing vignette overlay */
-body::before {
-  content: "";
-  position: fixed;
-  top: 0; left: 0; right: 0; bottom: 0;
-  background: radial-gradient(circle at center, transparent 40%, rgba(5,5,16,0.8) 100%);
-  pointer-events: none;
-  z-index: 0;
 }
 
 /* Scrollbar */
-::-webkit-scrollbar { width: 6px; height: 6px; }
-::-webkit-scrollbar-track { background: var(--cyber-bg); }
-::-webkit-scrollbar-thumb { background: #1a2c4c; border-radius: 0; }
-::-webkit-scrollbar-thumb:hover { background: var(--cyber-cyan); box-shadow: 0 0 10px var(--cyber-cyan); }
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
 
-/* Utility Classes for Cyber Layouts */
-.cyber-panel {
-  background: rgba(10, 15, 30, 0.6);
-  backdrop-filter: blur(10px);
-  border: 1px solid #1a2c4c;
-  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 15px), calc(100% - 15px) 100%, 0 100%);
-  position: relative;
+/* Utility Classes for SaaS Layouts */
+.saas-panel {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
 }
 
-.cyber-panel::after {
-  content: "";
-  position: absolute;
-  bottom: 0;
-  right: 0;
-  width: 15px;
-  height: 1px;
-  background: var(--cyber-cyan);
-  box-shadow: 0 0 5px var(--cyber-cyan);
+.saas-button {
+  background: #ffffff;
+  color: #0f172a;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  transition: all 0.15s ease;
+  font-weight: 500;
+  box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
 }
 
-.cyber-button {
-  background: transparent;
-  color: var(--cyber-cyan);
-  border: 1px solid var(--cyber-cyan);
-  clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
-  transition: all 0.2s ease;
-  text-transform: uppercase;
-  font-weight: bold;
-  letter-spacing: 1px;
+.saas-button:hover {
+  background: #f1f5f9;
+  border-color: #cbd5e1;
 }
 
-.cyber-button:hover {
-  background: var(--cyber-cyan);
-  color: #000;
-  box-shadow: 0 0 15px var(--cyber-cyan);
+.saas-button-primary {
+  background: #2563eb;
+  color: #ffffff;
+  border: 1px solid #1d4ed8;
+  border-radius: 8px;
+  transition: all 0.15s ease;
+  font-weight: 500;
+  box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
 }
 
-.cyber-button-active {
-  background: var(--cyber-cyan);
-  color: #000;
-  border: 1px solid var(--cyber-cyan);
-  box-shadow: 0 0 15px var(--cyber-cyan);
+.saas-button-primary:hover {
+  background: #1d4ed8;
 }
 
-.cyber-glitch-text {
-  position: relative;
-  display: inline-block;
-}
-
-.cyber-glitch-text::before,
-.cyber-glitch-text::after {
-  content: attr(data-text);
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background: transparent;
-}
-
-.cyber-glitch-text::before {
-  left: 2px;
-  text-shadow: -1px 0 var(--cyber-pink);
-  clip: rect(24px, 550px, 90px, 0);
-  animation: glitch-anim-2 3s infinite linear alternate-reverse;
-}
-
-.cyber-glitch-text::after {
-  left: -2px;
-  text-shadow: -1px 0 var(--cyber-cyan);
-  clip: rect(85px, 550px, 140px, 0);
-  animation: glitch-anim 2.5s infinite linear alternate-reverse;
-}
-
-/* Leaflet map fix */
+/* Leaflet map styling */
 .leaflet-container { 
-  background: var(--cyber-bg) !important; 
-  font-family: var(--font-rajdhani) !important;
+  background: #e2e8f0 !important; 
+  font-family: Inter, sans-serif !important;
 }
+
+/* Default light map tiles - no filter needed */
 .leaflet-tile-pane { 
-  /* Make the map look like a high-tech glowing radar */
-  filter: invert(100%) hue-rotate(180deg) brightness(95%) contrast(120%) saturate(150%);
+  filter: none;
 }
+
 .leaflet-popup-content-wrapper, .leaflet-popup-tip {
-  background: rgba(10, 15, 30, 0.9) !important;
-  border: 1px solid var(--cyber-cyan) !important;
-  color: var(--cyber-cyan) !important;
-  border-radius: 0 !important;
-  box-shadow: 0 0 15px rgba(0, 240, 255, 0.3) !important;
-  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%);
+  background: #ffffff !important;
+  border: 1px solid #e2e8f0 !important;
+  color: #0f172a !important;
+  border-radius: 8px !important;
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.1) !important;
 }

@@ -1,6 +1,6 @@
 """
-Weather Service — fetches weather disruptions from OpenWeatherMap API.
-Falls back to rich mock data when API key is missing or rate-limited.
+Weather Service — fetches live real-time weather disruptions across Indian hubs via OpenWeatherMap API.
+Strictly real-time data only (synthetic data disabled for production).
 """
 
 import os
@@ -40,41 +40,58 @@ WEATHER_SEVERITY_MAP = {
     "Tornado": "HIGH",
     "Extreme": "HIGH",
     "Smoke": "MEDIUM",
-    "Clear": "LOW",   # Include clear — useful baseline for routes   
-    "Clouds": "LOW",  # Fetch all conditions so the AI pipeline has full coverage
+    "Clear": "LOW",
+    "Clouds": "LOW",
 }
 
 
-
-
 def _map_weather_to_disruption(city: dict, weather_data: dict) -> dict | None:
-    """Convert OpenWeatherMap API response to unified disruption dict."""
+    """Convert OpenWeatherMap API response to unified disruption dict with meteorological thresholds."""
+    from datetime import datetime, timezone
+    
     main = weather_data.get("weather", [{}])[0].get("main", "Clear")
     desc = weather_data.get("weather", [{}])[0].get("description", "")
-    severity = WEATHER_SEVERITY_MAP.get(main, "LOW")
-    if not severity:
-        return None
-
-    # Extract real data from the API
-    temp = weather_data.get("main", {}).get("temp", "N/A")
-    humidity = weather_data.get("main", {}).get("humidity", "N/A")
+    
+    temp = weather_data.get("main", {}).get("temp", 25)
+    humidity = weather_data.get("main", {}).get("humidity", 50)
     wind_speed = weather_data.get("wind", {}).get("speed", 0)
-    from datetime import datetime
-    ts = datetime.utcfromtimestamp(weather_data.get("dt", 0)).strftime("%Y-%m-%dT%H:%M:%S") if weather_data.get("dt") else "2026-03-12T13:00:00"
+
+    # Dynamic severity adjustment based on live atmospheric data
+    severity = WEATHER_SEVERITY_MAP.get(main, "LOW")
+    subtype = f"{main} / {desc.title()}"
+
+    if wind_speed >= 12.0:
+        severity = "HIGH"
+        subtype = f"High Winds ({wind_speed} m/s) / {main}"
+    elif isinstance(temp, (int, float)) and temp >= 40.0:
+        severity = "MEDIUM"
+        subtype = f"Extreme Heat ({temp}°C) / {main}"
+
+    dt_val = weather_data.get("dt")
+    if dt_val:
+        ts = datetime.fromtimestamp(dt_val, tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
+    else:
+        ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
+
+    is_nominal = main in ["Clear", "Clouds"] and severity == "LOW"
+    description = (
+        f"{desc.title()} in {city['name']}. "
+        f"Temp: {temp}°C, Humidity: {humidity}%, Wind: {wind_speed} m/s. "
+        f"{'Transit conditions normal.' if is_nominal else 'Potential impact on road freight transit.'}"
+    )
 
     return {
         "id": f"W-{city['name'][:3].upper()}",
         "type": "weather",
-        "subtype": f"{main} / {desc.title()}",
+        "subtype": subtype,
         "location": city["name"],
         "lat": city["lat"],
         "lon": city["lon"],
+        "latitude": city["lat"],
+        "longitude": city["lon"],
+        "radius_km": 40,
         "severity": severity,
-        "description": (
-            f"{desc.title()} in {city['name']}. "
-            f"Temp: {temp}°C, Humidity: {humidity}%, Wind: {wind_speed} m/s. "
-            f"Potential impact on road and logistics routes."
-        ),
+        "description": description,
         "source": "OpenWeatherMap (Live)",
         "timestamp": ts,
     }
@@ -82,7 +99,8 @@ def _map_weather_to_disruption(city: dict, weather_data: dict) -> dict | None:
 
 async def fetch_weather_disruptions() -> list[dict]:
     """Fetch weather disruptions for all monitored cities."""
-    if not OPENWEATHER_API_KEY or OPENWEATHER_API_KEY == "your_openweathermap_key_here":
+    api_key = os.getenv("OPENWEATHER_API_KEY", "").strip(' "\'')
+    if not api_key or api_key == "your_openweather_api_key_here":
         raise ValueError("Missing OpenWeatherMap API Key. Synthetic data is disabled for production.")
 
     disruptions = []
@@ -94,7 +112,7 @@ async def fetch_weather_disruptions() -> list[dict]:
                     params={
                         "lat": city["lat"],
                         "lon": city["lon"],
-                        "appid": OPENWEATHER_API_KEY,
+                        "appid": api_key,
                         "units": "metric",
                     },
                 )

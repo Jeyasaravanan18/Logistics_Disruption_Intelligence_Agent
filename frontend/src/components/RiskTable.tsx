@@ -1,112 +1,132 @@
 "use client";
 import type { Recommendation } from "@/types";
-
-const COLORS: Record<string, string> = { HIGH: "var(--cyber-pink)", MEDIUM: "var(--cyber-yellow)", LOW: "var(--cyber-green)", SAFE: "var(--cyber-cyan)" };
+import { Shield, ShieldAlert, ShieldCheck, AlertTriangle } from "lucide-react";
 
 interface Props {
   recommendations: Recommendation[];
   riskBreakdown: { HIGH: number; MEDIUM: number; LOW: number; SAFE: number };
+  onRunAnalysis?: () => void;
+  loading?: boolean;
 }
 
-export default function RiskTable({ recommendations, riskBreakdown }: Props) {
+export default function RiskTable({ recommendations, riskBreakdown, onRunAnalysis, loading }: Props) {
   const total = Object.values(riskBreakdown).reduce((a, b) => a + b, 0);
+
+  if (recommendations.length === 0) {
+    return (
+      <div>
+        <div className="flex justify-between items-center mb-6">
+          <div>
+            <h2 className="text-lg font-bold text-slate-900">Risk Matrix</h2>
+            <p className="text-sm text-slate-500 mt-1">Live threat assessment across active fleet.</p>
+          </div>
+        </div>
+        <div className="flex flex-col items-center justify-center p-12 text-center saas-panel bg-white border border-slate-200 rounded-xl min-h-[300px]">
+          <ShieldAlert className="w-12 h-12 text-blue-500 mb-4" />
+          <h3 className="text-lg font-bold text-slate-900 mb-1">No Risk Matrix Data Yet</h3>
+          <p className="text-sm text-slate-500 max-w-md mb-6">
+            The 4-agent risk evaluation pipeline has not been executed for your active shipments.
+          </p>
+          {onRunAnalysis && (
+            <button
+              onClick={onRunAnalysis}
+              disabled={loading}
+              className="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold rounded-lg shadow-sm transition-all"
+            >
+              {loading ? "Evaluating Fleet Threats..." : "Run Threat Assessment Now"}
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div>
-      <h2 className="text-2xl font-bold mb-6 text-cyber-text uppercase tracking-widest font-mono">
-        <span className="text-cyber-cyan mr-2">::</span> Threat Matrix Analysis
-      </h2>
+      <div className="flex justify-between items-center mb-6">
+        <div>
+          <h2 className="text-lg font-bold text-slate-900">Risk Matrix</h2>
+          <p className="text-sm text-slate-500 mt-1">Live threat assessment across active fleet.</p>
+        </div>
+      </div>
 
-      {/* Cyber Breakdown Readout */}
-      <div className="grid grid-cols-4 gap-6 mb-8">
+      <div className="grid grid-cols-4 gap-4 mb-8">
         {(["HIGH", "MEDIUM", "LOW", "SAFE"] as const).map((level) => {
           const count = riskBreakdown[level];
           const pct = total > 0 ? Math.round((count / total) * 100) : 0;
-          const color = COLORS[level];
+          
+          let color = "text-slate-600 bg-slate-50 border-slate-200";
+          let icon = <Shield className="w-5 h-5 text-slate-400" />;
+          
+          if (level === "HIGH") {
+            color = "text-red-700 bg-red-50 border-red-100";
+            icon = <ShieldAlert className="w-5 h-5 text-red-500" />;
+          } else if (level === "MEDIUM") {
+            color = "text-amber-700 bg-amber-50 border-amber-100";
+            icon = <AlertTriangle className="w-5 h-5 text-amber-500" />;
+          } else if (level === "SAFE") {
+            color = "text-emerald-700 bg-emerald-50 border-emerald-100";
+            icon = <ShieldCheck className="w-5 h-5 text-emerald-500" />;
+          }
+
           return (
-            <div key={level} className="relative p-[1px] group transition-all duration-300 hover:-translate-y-1 hover:shadow-2xl">
-              {/* Outer Glowing Gradient Frame */}
-              <div 
-                className="absolute inset-0 bg-gradient-to-br from-transparent to-transparent opacity-60 group-hover:opacity-100 transition-opacity duration-300"
-                style={{ background: `linear-gradient(45deg, ${color}30 0%, transparent 30%, transparent 70%, ${color}30 100%)`, clipPath: 'polygon(15px 0, 100% 0, 100% calc(100% - 15px), calc(100% - 15px) 100%, 0 100%, 0 15px)' }}
-              ></div>
-              
-              <div className="relative h-full bg-black/70 backdrop-blur-lg p-5 flex flex-col overflow-hidden"
-                   style={{ 
-                     clipPath: 'polygon(15px 0, 100% 0, 100% calc(100% - 15px), calc(100% - 15px) 100%, 0 100%, 0 15px)',
-                     borderLeft: `4px solid ${color}`,
-                     boxShadow: `inset 0 0 30px ${color}10` 
-                   }}>
-                
-                {/* Tech Accent Lines */}
-                <div className="absolute top-0 right-0 w-12 h-12 opacity-20 border-r-2 border-t-2" style={{ borderColor: color, clipPath: 'polygon(100% 0, 0 0, 100% 100%)' }}></div>
-                <div className="absolute inset-0 bg-cyber-grid opacity-10 pointer-events-none group-hover:opacity-30 transition-opacity"></div>
-                <div className="absolute bottom-0 left-0 w-full h-[1px] bg-gradient-to-r from-transparent via-white/20 to-transparent transform -translate-x-full group-hover:translate-x-full transition-transform duration-1000 ease-in-out pointer-events-none"></div>
-                
-                <div className="relative z-10 pl-2">
-                  <div className="text-[10px] uppercase font-bold tracking-[0.3em] mb-2" style={{ color: "var(--cyber-text)" }}>{level} PROBABILITY</div>
-                  <div className="text-5xl font-display font-extrabold" style={{ color, textShadow: `0 0 15px ${color}60` }}>{count}</div>
-                  
-                  <div className="mt-4 flex items-center justify-between border-t border-white/10 pt-3">
-                    <div className="text-xs font-mono font-bold text-cyber-muted">VOLATILITY:</div>
-                    <div className="text-sm font-display font-bold px-2 py-0.5" style={{ color: "var(--cyber-bg)", backgroundColor: color, boxShadow: `0 0 8px ${color}40` }}>
-                      {pct}%
-                    </div>
-                  </div>
+            <div key={level} className={`saas-panel p-5 flex flex-col justify-between h-[115px] border ${color}`}>
+              <div className="flex justify-between items-start">
+                <div className="text-xs font-semibold uppercase tracking-wider opacity-80">
+                  {level} RISK
                 </div>
+                {icon}
+              </div>
+              <div className="flex items-end justify-between mt-2">
+                <div className="text-3xl font-bold tracking-tight">{count}</div>
+                <div className="text-sm font-medium opacity-70">{pct}%</div>
               </div>
             </div>
           );
         })}
       </div>
 
-      {/* Cyber Progress Bar */}
-      <div className="h-1 mb-8 flex bg-cyber-bg border-y border-cyber-border overflow-hidden">
-        {(["HIGH", "MEDIUM", "LOW", "SAFE"] as const).map((level) => {
-          const pct = total > 0 ? (riskBreakdown[level] / total) * 100 : 0;
-          return pct > 0 ? (
-            <div key={level} style={{ width: `${pct}%`, background: COLORS[level], boxShadow: `0 0 10px ${COLORS[level]}` }} className="transition-all duration-1000"></div>
-          ) : null;
-        })}
-      </div>
-
-      {/* Data Grid */}
-      <div className="border border-cyber-border bg-black/50 overflow-x-auto">
+      <div className="saas-panel overflow-hidden">
         <table className="w-full text-left border-collapse">
           <thead>
-            <tr className="bg-cyber-cyan/10 border-b border-cyber-cyan">
-              {["Target ID", "Vector", "Highway", "Cargo", "Priority", "Threat", "Dist", "Delay"].map((h) => (
-                <th key={h} className="px-4 py-3 text-[10px] uppercase tracking-[0.2em] font-mono text-cyber-cyan font-bold whitespace-nowrap">
-                  {h}
-                </th>
-              ))}
+            <tr className="border-b border-slate-200 bg-slate-50 text-xs font-semibold text-slate-500 uppercase tracking-wider">
+              <th className="px-5 py-4">Shipment ID</th>
+              <th className="px-5 py-4">Route Info</th>
+              <th className="px-5 py-4">Cargo</th>
+              <th className="px-5 py-4">Status</th>
+              <th className="px-5 py-4">Risk Level</th>
+              <th className="px-5 py-4 text-right">Delay Est.</th>
             </tr>
           </thead>
-          <tbody className="font-mono text-xs">
-            {recommendations.map((r, i) => {
-              const rc = COLORS[r.risk_level];
+          <tbody className="text-sm">
+            {recommendations.map((r) => {
+              let badgeStyle = "bg-slate-100 text-slate-700";
+              if (r.risk_level === 'HIGH') badgeStyle = "bg-red-100 text-red-700";
+              else if (r.risk_level === 'MEDIUM') badgeStyle = "bg-amber-100 text-amber-800";
+              else if (r.risk_level === 'SAFE') badgeStyle = "bg-emerald-100 text-emerald-700";
+
               return (
-                <tr key={r.shipment_id}
-                  className={`border-b border-cyber-border transition-colors hover:bg-white/5 ${i % 2 === 0 ? "bg-transparent" : "bg-black/20"}`}>
-                  <td className="px-4 py-3 font-bold" style={{ color: rc, textShadow: `0 0 5px ${rc}80` }}>{r.shipment_id}</td>
-                  <td className="px-4 py-3 text-cyber-text truncate max-w-[150px]">{r.origin} - {r.destination}</td>
-                  <td className="px-4 py-3 text-cyber-muted">{r.route_highway}</td>
-                  <td className="px-4 py-3 text-cyber-muted">{r.cargo_type}</td>
-                  <td className="px-4 py-3">
-                    <span className="px-2 py-0.5 border text-[9px] tracking-widest"
-                      style={{ background: `rgba(255,255,255,0.05)`, color: "var(--cyber-text)", borderColor: "var(--cyber-border)" }}>
+                <tr key={r.shipment_id} className="border-b border-slate-100 hover:bg-slate-50 transition-colors">
+                  <td className="px-5 py-4 font-semibold text-slate-900">{r.shipment_id}</td>
+                  <td className="px-5 py-4">
+                    <div className="text-slate-900 font-medium">{r.origin} &rarr; {r.destination}</div>
+                    <div className="text-xs text-slate-500 mt-1">{r.route_highway}</div>
+                  </td>
+                  <td className="px-5 py-4 text-slate-600">{r.cargo_type}</td>
+                  <td className="px-5 py-4">
+                    <span className="px-2.5 py-1 text-[11px] font-medium border border-slate-200 rounded-md text-slate-600 bg-white">
                       {r.delivery_priority}
                     </span>
                   </td>
-                  <td className="px-4 py-3">
-                    <span className="px-2 py-0.5 border text-[9px] tracking-widest font-bold"
-                      style={{ background: `${rc}15`, color: rc, borderColor: rc, boxShadow: `0 0 5px ${rc}44` }}>
+                  <td className="px-5 py-4">
+                    <span className={`px-2.5 py-1 text-[11px] font-bold rounded-full uppercase tracking-wider ${badgeStyle}`}>
                       {r.risk_level}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-cyber-muted">{r.distance_to_disruption_km?.toFixed(0) ? `${r.distance_to_disruption_km.toFixed(0)}KM` : "N/A"}</td>
-                  <td className="px-4 py-3 font-bold" style={{ color: r.estimated_delay_hours ? "var(--cyber-yellow)" : "var(--cyber-green)" }}>
-                    {r.estimated_delay_hours ? `+${r.estimated_delay_hours}H` : "0H"}
+                  <td className="px-5 py-4 text-right font-medium text-slate-700">
+                    {r.estimated_delay_hours ? (
+                      <span className="text-amber-600">+{r.estimated_delay_hours} hrs</span>
+                    ) : "-"}
                   </td>
                 </tr>
               );

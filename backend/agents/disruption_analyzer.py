@@ -8,6 +8,7 @@ for structured, reliable AI reasoning with automatic fallback.
 
 import os
 import json
+import asyncio
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -56,85 +57,71 @@ def _rule_based_analysis(disruption: dict) -> dict:
     }
 
 
-def _build_langchain_chain():
-    """
-    Build the LangChain LCEL chain for disruption analysis.
-    Uses ChatPromptTemplate | ChatGoogleGenerativeAI | JsonOutputParser
-    """
-    from langchain_google_genai import ChatGoogleGenerativeAI
-    from langchain_core.prompts import ChatPromptTemplate
-    from langchain_core.output_parsers import JsonOutputParser
-
-    llm = ChatGoogleGenerativeAI(
-        model="gemini-1.5-flash-latest",
-        google_api_key=GEMINI_API_KEY,
-        temperature=0.1,
-    )
-
-    prompt = ChatPromptTemplate.from_messages([
-        (
-            "system",
-            "You are an expert logistics disruption analyst for Indian highway freight. "
-            "Analyze disruptions and respond ONLY with valid JSON. "
-            "Your response must be a single valid JSON object."
-        ),
-        (
-            "human",
-            """Analyze this logistics disruption:
-- Type: {subtype}
-- Location: {location}
-- Severity: {severity}
-- Description: {description}
-
-Respond ONLY with this exact JSON structure:
-{{
-  "impact_duration_hours": <integer between 1-72>,
-  "affected_transport_modes": ["road", "rail", "air", "sea"],
-  "risk_factors": ["specific risk factor 1", "specific risk factor 2"],
-  "analysis_reasoning": "<2-3 sentence expert analysis specific to the disruption>"
-}}"""
-        ),
-    ])
-
-    parser = JsonOutputParser()
-    chain = prompt | llm | parser
-    return chain
-
-
-async def _langchain_analysis(disruption: dict) -> dict:
-    """Use LangChain LCEL chain to enrich disruption analysis."""
-    try:
-        chain = _build_langchain_chain()
-        result = await chain.ainvoke({
-            "subtype": disruption.get("subtype", "Unknown"),
-            "location": disruption.get("location", "Unknown"),
-            "severity": disruption.get("severity", "LOW"),
-            "description": disruption.get("description", "No details provided"),
-        })
-        print(f"[DisruptionAnalyzerAgent][LangChain] Analyzed: {disruption.get('subtype')} at {disruption.get('location')}")
-        return {**disruption, **result, "analyzed_by": "langchain-gemini-1.5-flash"}
-    except Exception as e:
-        print(f"[DisruptionAnalyzerAgent] LangChain failed ({e}), using rule-based fallback")
-        return _rule_based_analysis(disruption)
+from services.gemini_service import generate_gemini_json
 
 
 async def analyze_disruptions(disruptions: list[dict]) -> list[dict]:
     """
-    Agent 2 main function: Analyze and enrich each disruption.
-    Uses LangChain LCEL pipeline (ChatGoogleGenerativeAI + JsonOutputParser).
-    Falls back to rule-based logic if LangChain/API unavailable.
+    Agent 2 main function: Analyze and enrich disruptions using Gemini 3.6 Flash.
+    Uses batch JSON prompt: 1 single API call for all disruptions to strictly respect free quota.
     """
-    print(f"[DisruptionAnalyzerAgent] Analyzing {len(disruptions)} disruptions via LangChain...")
+    if not disruptions:
+        return []
 
-    use_langchain = bool(GEMINI_API_KEY and GEMINI_API_KEY != "your_gemini_api_key_here")
+    print(f"[DisruptionAnalyzerAgent] Analyzing {len(disruptions)} disruptions via Gemini AI (Single Batch Call)...", flush=True)
 
-    analyzed = []
+    has_gemini = bool(GEMINI_API_KEY and GEMINI_API_KEY != "your_gemini_api_key_here")
+    if not has_gemini:
+        return [_rule_based_analysis(d) for d in disruptions]
+
+    prompt_items = []
     for d in disruptions:
-        if use_langchain:
-            enriched = await _langchain_analysis(d)
-        else:
-            enriched = _rule_based_analysis(d)
-        analyzed.append(enriched)
+        prompt_items.append({
+            "id": d.get("id"),
+            "subtype": d.get("subtype"),
+            "location": d.get("location"),
+            "severity": d.get("severity"),
+            "description": d.get("description"),
+        })
 
-    print(f"[DisruptionAnalyzerAgent] Done. Analyzed {len(analyzed)} disruptions.")
-    return analyzed
+    system_instruction = (
+        "You are an expert logistics disruption analyst for Indian highway freight. "
+        "Analyze the provided disruption events and return a JSON object with a key 'analyzed_disruptions' "
+        "containing an array of objects matching each disruption."
+    )
+    prompt = f"""Analyze these active logistics disruptions:
+{json.dumps(prompt_items, indent=2)}
+
+Respond ONLY with this exact JSON structure:
+{{
+  "analyzed_disruptions": [
+    {{
+      "id": "<matching disruption id>",
+      "impact_duration_hours": <integer 1-72>,
+      "affected_transport_modes": ["road", "rail", "air", "sea"],
+      "risk_factors": ["risk 1", "risk 2"],
+      "analysis_reasoning": "<2-3 sentence expert analysis specific to the disruption>"
+    }}
+  ]
+}}"""
+
+    try:
+        result = await generate_gemini_json(prompt, system_instruction)
+        if result and "analyzed_disruptions" in result and isinstance(result["analyzed_disruptions"], list):
+            lookup = {item["id"]: item for item in result["analyzed_disruptions"] if "id" in item}
+            enriched = []
+            for d in disruptions:
+                ai_data = lookup.get(d.get("id"))
+                if ai_data and "analysis_reasoning" in ai_data:
+                    enriched.append({**d, **ai_data, "analyzed_by": "gemini-1.5-flash"})
+                else:
+                    enriched.append(_rule_based_analysis(d))
+            print(f"[DisruptionAnalyzerAgent] Batch complete. {len(enriched)} disruptions enriched with Gemini AI.", flush=True)
+            return enriched
+        else:
+            print("[DisruptionAnalyzerAgent] Gemini batch format unexpected or unauthenticated, applying rule fallback", flush=True)
+            return [_rule_based_analysis(d) for d in disruptions]
+    except Exception as e:
+        print(f"[DisruptionAnalyzerAgent] Gemini batch call failed ({e}), applying rule fallback", flush=True)
+        return [_rule_based_analysis(d) for d in disruptions]
+

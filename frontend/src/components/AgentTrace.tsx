@@ -1,49 +1,61 @@
 "use client";
 import { useState } from "react";
 import type { PipelineInfo } from "@/types";
+import { ChevronDown, ChevronRight, Terminal, Bot } from "lucide-react";
 
 export default function AgentTrace({ pipeline }: { pipeline: PipelineInfo }) {
   const [open, setOpen] = useState(false);
 
   return (
-    <div className="mb-8 border border-cyber-border bg-black/60 cyber-panel">
+    <div className="mb-6 border border-slate-200 bg-white rounded-lg overflow-hidden shadow-sm">
       <button 
         onClick={() => setOpen(!open)}
-        className="w-full flex justify-between items-center p-4 hover:bg-white/5 transition-colors text-left"
+        className="w-full flex justify-between items-center p-4 hover:bg-slate-50 transition-colors text-left"
       >
         <div className="flex items-center gap-3">
-          <span className="text-xl">{open ? "▼" : "▶"}</span>
-          <span className="font-mono font-bold text-cyber-purple tracking-widest uppercase">
-            [SYS.TRACE] Agent Pipeline Logs
-          </span>
+          {open ? <ChevronDown className="w-5 h-5 text-slate-400" /> : <ChevronRight className="w-5 h-5 text-slate-400" />}
+          <div className="flex items-center gap-2">
+            <Bot className="w-4 h-4 text-indigo-600" />
+            <span className="font-semibold text-slate-900">
+              AI Decision Trace
+            </span>
+          </div>
         </div>
-        <div className="text-xs font-mono text-cyber-muted tracking-[0.2em] uppercase">
+        <div className="text-xs font-semibold text-slate-500 bg-slate-100 px-2 py-1 rounded-md">
           {pipeline.disruptions_collected} Signals / {pipeline.shipments_evaluated} Targets 
         </div>
       </button>
 
       {open && (
-        <div className="p-4 border-t border-cyber-border font-mono text-xs text-cyber-muted space-y-4 bg-black/80 relative">
-          <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.02)_1px,transparent_1px)] bg-[size:100%_4px] pointer-events-none group-hover:animate-pulse-scan"></div>
+        <div className="p-5 border-t border-slate-100 text-sm text-slate-600 space-y-6 bg-slate-50">
           
-          <div className="relative z-10">
-            <div className="font-bold text-cyber-cyan mb-2 uppercase tracking-widest">:: DataCollectorAgent</div>
-            <p className="pl-4 border-l border-cyber-cyan/30 text-cyber-text leading-relaxed bg-cyber-cyan/5 p-2">
+          <div>
+            <div className="font-bold text-slate-900 mb-2 uppercase tracking-widest text-xs flex items-center gap-2">
+              <span className="w-1.5 h-1.5 bg-indigo-500 rounded-full"></span>
+              DataCollectorAgent
+            </div>
+            <p className="pl-4 border-l-2 border-indigo-200 text-slate-700 leading-relaxed bg-white p-3 rounded-r-md border border-l-0 border-slate-200 shadow-sm">
               {pipeline.collector_reasoning}
             </p>
           </div>
 
-          <div className="relative z-10">
-            <div className="font-bold text-cyber-yellow mb-2 uppercase tracking-widest">:: RiskEvaluatorAgent</div>
-            <p className="pl-4 border-l border-cyber-yellow/30 text-cyber-text leading-relaxed bg-cyber-yellow/5 p-2">
+          <div>
+            <div className="font-bold text-slate-900 mb-2 uppercase tracking-widest text-xs flex items-center gap-2">
+              <span className="w-1.5 h-1.5 bg-indigo-500 rounded-full"></span>
+              RiskEvaluatorAgent
+            </div>
+            <p className="pl-4 border-l-2 border-indigo-200 text-slate-700 leading-relaxed bg-white p-3 rounded-r-md border border-l-0 border-slate-200 shadow-sm">
               Cross-referenced {pipeline.disruptions_collected} active anomalies against {pipeline.shipments_evaluated} active supply line trajectories. 
               Identified {pipeline.risk_breakdown.HIGH} HIGH, {pipeline.risk_breakdown.MEDIUM} MEDIUM, and {pipeline.risk_breakdown.LOW} LOW threat intersections.
             </p>
           </div>
 
-          <div className="relative z-10">
-            <div className="font-bold text-cyber-pink mb-2 uppercase tracking-widest">:: RecommendationAgent</div>
-            <p className="pl-4 border-l border-cyber-pink/30 text-cyber-text leading-relaxed bg-cyber-pink/5 p-2 mb-2">
+          <div>
+            <div className="font-bold text-slate-900 mb-2 uppercase tracking-widest text-xs flex items-center gap-2">
+              <span className="w-1.5 h-1.5 bg-indigo-500 rounded-full"></span>
+              RecommendationAgent
+            </div>
+            <p className="pl-4 border-l-2 border-indigo-200 text-slate-700 leading-relaxed bg-white p-3 rounded-r-md border border-l-0 border-slate-200 shadow-sm">
               Synthesized evasion strategies and delay calculations across all non-nominal routes. Re-routing vectors compiled.
             </p>
           </div>

@@ -7,6 +7,8 @@ Uses a tailor prompt with full shipment and disruption context. Falls back to ru
 """
 
 import os
+import json
+import asyncio
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -102,104 +104,89 @@ def _rule_based_recommendation(risk_record: dict) -> dict:
     }
 
 
-def _build_langchain_recommendation_chain():
-    """
-    Build the LangChain LCEL chain for generating actionable recommendations.
-    Uses ChatPromptTemplate | ChatGoogleGenerativeAI | JsonOutputParser
-    """
-    from langchain_google_genai import ChatGoogleGenerativeAI
-    from langchain_core.prompts import ChatPromptTemplate
-    from langchain_core.output_parsers import JsonOutputParser
-
-    llm = ChatGoogleGenerativeAI(
-        model="gemini-1.5-flash-latest",
-        google_api_key=GEMINI_API_KEY,
-        temperature=0.2,
-    )
-
-    prompt = ChatPromptTemplate.from_messages([
-        (
-            "system",
-            "You are a senior logistics operations manager AI for Indian freight. "
-            "Generate specific, actionable route recommendations for shipments at risk. "
-            "Respond ONLY with valid JSON — no text before or after."
-        ),
-        (
-            "human",
-            """A shipment requires an operational decision based on the current disruption.
-
-SHIPMENT:
-- ID: {shipment_id}
-- Route: {origin} → {destination} via {route_highway}
-- Cargo: {cargo_type} ({delivery_priority} priority)
-- ETA: {estimated_delivery_time}
-
-RISK ASSESSMENT:
-- Risk Level: {risk_level}
-- Disruption Type: {disruption_type}
-- Disruption Location: {disruption_location}
-- Distance from Route: {distance_to_disruption_km} km
-- Reason: {reason}
-
-Generate a specific, expert recommendation as JSON:
-{{
-  "suggested_action": "<specific 2-4 sentence action steps for the driver and operations team>",
-  "alternate_route": "<specific alternate highway or transport mode, or 'No reroute needed'>",
-  "estimated_delay_hours": <integer 0-72>,
-  "customer_message": "<professional 1-2 sentence customer-facing notification>"
-}}"""
-        ),
-    ])
-
-    parser = JsonOutputParser()
-    chain = prompt | llm | parser
-    return chain
-
-
-async def _langchain_recommendation(risk_record: dict) -> dict:
-    """Use LangChain LCEL chain to generate context-aware recommendations."""
-    try:
-        chain = _build_langchain_recommendation_chain()
-        result = await chain.ainvoke({
-            "shipment_id": risk_record.get("shipment_id", "UNKNOWN"),
-            "origin": risk_record.get("origin", "Unknown"),
-            "destination": risk_record.get("destination", "Unknown"),
-            "route_highway": risk_record.get("route_highway", "Unknown"),
-            "cargo_type": risk_record.get("cargo_type", "General"),
-            "delivery_priority": risk_record.get("delivery_priority", "MEDIUM"),
-            "estimated_delivery_time": risk_record.get("estimated_delivery_time", "Unknown"),
-            "risk_level": risk_record.get("risk_level", "LOW"),
-            "disruption_type": risk_record.get("disruption_type", "Unknown"),
-            "disruption_location": risk_record.get("disruption_location", "Unknown"),
-            "distance_to_disruption_km": risk_record.get("distance_to_disruption_km", "Unknown"),
-            "reason": risk_record.get("reason", "Disruption detected near route."),
-        })
-        print(f"[RecommendationAgent][LangChain] Generated for: {risk_record.get('shipment_id')} ({risk_record.get('risk_level')})")
-        return {**risk_record, **result, "recommendation_by": "langchain-gemini-1.5-flash"}
-    except Exception as e:
-        print(f"[RecommendationAgent] LangChain failed ({e}), using rule-based fallback")
-        return _rule_based_recommendation(risk_record)
+from services.gemini_service import generate_gemini_json
 
 
 async def generate_recommendations(risk_records: list[dict]) -> list[dict]:
     """
     Agent 4 main function: Generate recommendations for all risk records.
-    Uses LangChain LCEL pipeline for non-SAFE shipments.
-    SAFE shipments receive a rule-based confirmation.
+    Uses a single batch JSON prompt to Gemini 3.6 Flash for all at-risk shipments.
+    100% quota-safe (1 API call total) and delivers rich, context-aware AI recommendations.
+    SAFE shipments receive an on-track confirmation immediately.
     """
-    print(f"[RecommendationAgent] Generating recommendations for {len(risk_records)} shipments via LangChain...")
+    if not risk_records:
+        return []
 
-    use_langchain = bool(GEMINI_API_KEY and GEMINI_API_KEY != "your_gemini_api_key_here")
-    recommendations = []
+    print(f"[RecommendationAgent] Processing recommendations for {len(risk_records)} shipments...", flush=True)
 
-    for record in risk_records:
-        if record.get("risk_level") == "SAFE":
-            recommendations.append(_rule_based_recommendation(record))
-        elif use_langchain:
-            rec = await _langchain_recommendation(record)
-            recommendations.append(rec)
+    has_gemini = bool(GEMINI_API_KEY and GEMINI_API_KEY != "your_gemini_api_key_here")
+
+    safe_records = [r for r in risk_records if r.get("risk_level") == "SAFE"]
+    at_risk_records = [r for r in risk_records if r.get("risk_level") != "SAFE"]
+
+    # Safe shipments get immediate confirmation
+    results = [_rule_based_recommendation(r) for r in safe_records]
+
+    if not at_risk_records or not has_gemini:
+        results.extend([_rule_based_recommendation(r) for r in at_risk_records])
+        return results
+
+    print(f"[RecommendationAgent] Generating batch recommendations for {len(at_risk_records)} at-risk shipments via Gemini AI...", flush=True)
+
+    prompt_items = []
+    for r in at_risk_records:
+        prompt_items.append({
+            "shipment_id": r.get("shipment_id"),
+            "route": f"{r.get('origin')} -> {r.get('destination')} via {r.get('route_highway')}",
+            "cargo": f"{r.get('cargo_type')} ({r.get('delivery_priority')} priority)",
+            "risk_level": r.get("risk_level"),
+            "disruption": f"{r.get('disruption_type')} at {r.get('disruption_location')} ({r.get('distance_to_disruption_km')} km away)",
+            "reason": r.get("reason"),
+        })
+
+    system_instruction = (
+        "You are a senior logistics operations manager AI for Indian freight networks. "
+        "Generate specific, actionable route recommendations for each at-risk shipment. "
+        "Respond ONLY with valid JSON containing a key 'recommendations' with an array of objects."
+    )
+    prompt = f"""Generate expert route recommendations for these at-risk shipments:
+{json.dumps(prompt_items, indent=2)}
+
+Respond ONLY with this exact JSON structure:
+{{
+  "recommendations": [
+    {{
+      "shipment_id": "<matching shipment_id>",
+      "suggested_action": "<specific 2-4 sentence action steps for the driver and operations team>",
+      "alternate_route": "<specific alternate highway or diversion route, or 'No reroute needed'>",
+      "estimated_delay_hours": <integer 1-72>,
+      "customer_message": "<professional 1-2 sentence customer notification message>"
+    }}
+  ]
+}}"""
+
+    try:
+        result = await generate_gemini_json(prompt, system_instruction)
+        if result and "recommendations" in result and isinstance(result["recommendations"], list):
+            lookup = {item["shipment_id"]: item for item in result["recommendations"] if "shipment_id" in item}
+            for r in at_risk_records:
+                ai_data = lookup.get(r.get("shipment_id"))
+                if ai_data and "suggested_action" in ai_data:
+                    results.append({**r, **ai_data, "recommendation_by": "gemini-1.5-flash"})
+                else:
+                    results.append(_rule_based_recommendation(r))
+            print(f"[RecommendationAgent] Batch complete. {len(lookup)} recommendations generated by Gemini AI.", flush=True)
         else:
-            recommendations.append(_rule_based_recommendation(record))
+            print("[RecommendationAgent] Gemini batch format unexpected or unauthenticated, using rule fallback", flush=True)
+            results.extend([_rule_based_recommendation(r) for r in at_risk_records])
+    except Exception as e:
+        print(f"[RecommendationAgent] Gemini batch failed ({e}), using rule fallback", flush=True)
+        results.extend([_rule_based_recommendation(r) for r in at_risk_records])
 
-    print(f"[RecommendationAgent] Done. {len(recommendations)} recommendations generated.")
-    return recommendations
+    # Sort results: HIGH, MEDIUM, LOW, SAFE
+    order = {"HIGH": 0, "MEDIUM": 1, "LOW": 2, "SAFE": 3}
+    results.sort(key=lambda x: order.get(x.get("risk_level"), 4))
+
+    print(f"[RecommendationAgent] Done. {len(results)} total recommendations generated.", flush=True)
+    return results
+

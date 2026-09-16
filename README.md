@@ -1,36 +1,40 @@
 # 🛰️ Logistics Disruption Intelligence Agent
 
-An AI-powered logistics disruption monitoring system built for a hackathon. It detects real-world disruptions (weather, news), matches them against active shipment routes using geospatial reasoning, and provides actionable AI recommendations via an interactive dashboard.
+An enterprise-grade, autonomous AI supply chain resilience platform. It ingests real-world disruption signals (live OpenWeatherMap API + live Google News RSS feeds), performs vector-based geospatial corridor risk projection against active freight fleets, and delivers actionable rerouting directives alongside an interactive **What-If Route Simulator**.
+
+> 📚 **Interview & Architecture Guides:**
+> - [🎙️ 2-Minute Interview Pitch & Q&A Playbook](INTERVIEW_2MIN_PITCH.md)
+> - [🏗️ Complete System Architecture & Technical Specification](PROJECT_COMPLETE_SYSTEM_DESCRIPTION.md)
 
 ---
 
-## 🏗️ Architecture
+## 🏗️ System Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                    NEXT.JS DASHBOARD (port 3000)                │
-│  Modern Cyberpunk UI · Map · Shipments · Disruptions            │
+│                    NEXT.JS 14 DASHBOARD (port 3000)             │
+│  Enterprise SaaS UI · Leaflet Map · What-If Route Simulator     │
 └──────────────────────────┬──────────────────────────────────────┘
-                           │ HTTP / WebSockets
+                           │ HTTP / WebSockets (/ws/risk-updates)
 ┌──────────────────────────▼──────────────────────────────────────┐
-│                    FASTAPI BACKEND (port 8000)                  │
-│  GET /shipments  │  GET /disruptions  │  GET /risk-analysis     │
+│                    FASTAPI ASYNC BACKEND (port 8000)            │
+│  JWT Auth · MongoDB (Motor) · 2ms In-Memory SHA256 Cache        │
 └───────────────────────────┬─────────────────────────────────────┘
                             │
            ┌────────────────▼────────────────┐
            │         4-AGENT PIPELINE        │
            │                                 │
-           │  [1] DataCollectorAgent          │
-           │      ↓ Weather API + News API   │
+           │  [1] DataCollectorAgent         │
+           │      ↓ Live Weather + RSS News  │
            │                                 │
-           │  [2] DisruptionAnalyzerAgent     │
-           │      ↓ Gemini AI / Rule-based   │
+           │  [2] DisruptionAnalyzerAgent    │
+           │      ↓ Gemini AI + Heuristics   │
            │                                 │
-           │  [3] RiskEvaluatorAgent          │
-           │      ↓ Haversine geomatching    │
+           │  [3] RiskEvaluatorAgent         │
+           │      ↓ Vector Corridor Math     │
            │                                 │
-           │  [4] RecommendationAgent         │
-           │      ↓ Gemini AI / Templates    │
+           │  [4] RecommendationAgent        │
+           │      ↓ Detours & Delay Recovery │
            └─────────────────────────────────┘
 ```
 
@@ -39,18 +43,19 @@ An AI-powered logistics disruption monitoring system built for a hackathon. It d
 ## 📁 Project Structure
 
 ```
-hackathon-ps4/
+Logistics_Disruption_Intelligence_Agent/
 ├── backend/
-│   ├── main.py                    # FastAPI app
+│   ├── main.py                    # FastAPI app & ASGI entrypoint
 │   ├── agents/
-│   │   ├── data_collector.py      # Agent 1: Fetch disruption signals
-│   │   ├── disruption_analyzer.py # Agent 2: Analyze & enrich disruptions
-│   │   ├── risk_evaluator.py      # Agent 3: Geospatial risk scoring
-│   │   └── recommendation.py     # Agent 4: Generate recommendations
+│   │   ├── data_collector.py      # Agent 1: Live RSS & Weather Ingestion
+│   │   ├── disruption_analyzer.py # Agent 2: AI & Heuristic Severity Analyzer
+│   │   ├── risk_evaluator.py      # Agent 3: Vector Route Corridor Evaluator
+│   │   └── recommendation.py     # Agent 4: Rerouting Directives & Detours
 │   ├── services/
-│   │   ├── weather_service.py    # OpenWeatherMap integration
-│   │   ├── news_service.py       # GNews integration
-│   │   └── geo_matcher.py        # Haversine radius matching
+│   │   ├── weather_service.py    # OpenWeatherMap API integration
+│   │   ├── news_service.py       # Google News RSS live parser & geocoder
+│   │   ├── geo_matcher.py        # Vector line-segment projection math
+│   │   └── gemini_service.py     # Gemini 2.5/1.5 Flash + 429 Circuit Breaker
 │   ├── routers/
 │   │   ├── shipments.py          # GET /shipments
 │   │   ├── disruptions.py        # GET /disruptions

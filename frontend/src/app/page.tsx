@@ -1,21 +1,22 @@
 "use client";
 import { useState, useEffect, useCallback } from "react";
-import { fetchShipments, fetchDisruptions, fetchRiskAnalysis } from "@/lib/api";
-import type { Shipment, Disruption, Recommendation, RiskAnalysis } from "@/types";
+import { useAuth } from "@/context/AuthContext";
+import { useRouter } from "next/navigation";
+import { BACKEND_WS, fetchShipments, fetchDisruptions, fetchRiskAnalysis, runRiskAnalysis } from "@/lib/api";
+import type { Shipment, Disruption, RiskAnalysis } from "@/types";
+import dynamic from "next/dynamic";
 import KpiCard from "@/components/KpiCard";
-import Sidebar from "@/components/Sidebar";
+import Sidebar, { type AppView } from "@/components/Sidebar";
 import RiskTable from "@/components/RiskTable";
 import DisruptionList from "@/components/DisruptionList";
 import RecommendationCards from "@/components/RecommendationCards";
-import MapView from "@/components/MapView";
-import AgentTrace from "@/components/AgentTrace";
+import ShipmentsTab from "@/components/ShipmentsTab";
+import SettingsPanel from "@/components/SettingsPanel";
+import { Package, AlertCircle, ShieldAlert, ShieldCheck } from "lucide-react";
 
-const BACKEND_WS = (process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000")
-  .replace("http://", "ws://")
-  .replace("https://", "wss://");
+const MapView = dynamic(() => import("@/components/MapView"), { ssr: false });
 
-const TABS = ["MAP_VIEW", "SHIPMENTS", "DISRUPTIONS", "RISK_ANALYSIS", "AI_CORE"] as const;
-const TAB_ICONS = ["🗺️", "📦", "⚡", "🎯", "🤖"] as const;
+const TABS = ["Map View", "Active Fleet", "Anomalies", "Risk Matrix", "AI Strategy"];
 
 export default function DashboardPage() {
   const [shipments, setShipments] = useState<Shipment[]>([]);
@@ -24,7 +25,17 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [liveUpdate, setLiveUpdate] = useState(false);
   const [tab, setTab] = useState<number>(0);
+  const [view, setView] = useState<AppView>("dashboard");
+  const [simulatedShipmentId, setSimulatedShipmentId] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<string>("");
+  const { user, isLoading: authLoading } = useAuth();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (!authLoading && !user) {
+      router.push("/login");
+    }
+  }, [user, authLoading, router]);
 
   const loadAll = useCallback(async () => {
     setLoading(true);
@@ -43,12 +54,38 @@ export default function DashboardPage() {
     }
   }, []);
 
-  // Initial load
-  useEffect(() => { loadAll(); }, [loadAll]);
+  const handleRunAnalysis = useCallback(async () => {
+    setLoading(true);
+    try {
+      const risk = await runRiskAnalysis();
+      setRiskData(risk);
+      setLastUpdated(new Date().toLocaleTimeString("en-IN"));
+    } catch (err) {
+      console.error("Failed to run risk analysis:", err);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
-  // WebSocket for live push updates
   useEffect(() => {
-    const ws = new WebSocket(`${BACKEND_WS}/ws/risk-updates`);
+    if (user) {
+      loadAll();
+    }
+  }, [loadAll, user]);
+
+  useEffect(() => {
+    if (view === "dashboard" && (tab === 3 || tab === 4) && !riskData && !loading) {
+      handleRunAnalysis();
+    }
+  }, [tab, view, riskData, loading, handleRunAnalysis]);
+
+  useEffect(() => {
+    if (!user) return;
+    const token = typeof window !== "undefined" ? sessionStorage.getItem("ws_token") : null;
+    const wsUrl = token
+      ? `${BACKEND_WS}/ws/risk-updates?token=${encodeURIComponent(token)}`
+      : `${BACKEND_WS}/ws/risk-updates`;
+    const ws = new WebSocket(wsUrl);
     ws.onmessage = (evt) => {
       const msg = JSON.parse(evt.data);
       if (msg.event === "analysis_complete") {
@@ -57,205 +94,149 @@ export default function DashboardPage() {
         loadAll();
       }
     };
-    ws.onerror = () => {}; // Silently fail if no WS
+    ws.onerror = () => {};
     return () => ws.close();
-  }, [loadAll]);
+  }, [loadAll, user]);
 
   const recs = riskData?.recommendations ?? [];
   const pipeline = riskData?.pipeline;
   const rb = pipeline?.risk_breakdown ?? { HIGH: 0, MEDIUM: 0, LOW: 0, SAFE: 0 };
 
+  if (authLoading || !user) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50">
+        <div className="w-8 h-8 border-4 border-slate-200 border-t-blue-600 rounded-full animate-spin"></div>
+      </div>
+    );
+  }
+
   return (
-    <div className="flex min-h-screen">
-      <Sidebar onRefresh={loadAll} loading={loading} lastUpdated={lastUpdated} />
+    <div className="flex h-screen w-full overflow-hidden bg-slate-50 text-slate-900">
+      <Sidebar
+        view={view}
+        onView={(next) => {
+          setView(next);
+          if (next === "map") setTab(0);
+          if (next === "shipments") setTab(1);
+          if (next === "dashboard") setTab(0);
+        }}
+        onRefresh={loadAll}
+        loading={loading}
+        lastUpdated={lastUpdated}
+      />
 
-      <main className="flex-1 p-6 overflow-auto">
-        {/* Header */}
-        <div className="mb-8 flex justify-between items-end border-b border-cyber-border pb-4 relative">
+      <main className="flex-1 h-screen overflow-y-auto">
+        <header className="bg-white border-b border-slate-200 px-8 py-4 flex justify-between items-center sticky top-0 z-10 shadow-sm">
           <div>
-            <div className="text-[10px] text-cyber-cyan font-mono tracking-[0.3em] mb-2 uppercase">System Overview</div>
-            <h1 className="text-4xl font-extrabold uppercase tracking-tight text-cyber-text" style={{ textShadow: "0 0 10px rgba(224,242,255,0.3)" }}>
-              Global Routing <span className="text-cyber-cyan">Matrix</span>
+            <h1 className="text-xl font-bold tracking-tight text-slate-900">
+              {view === "settings" ? "Settings" : view === "shipments" ? "Shipments" : "Shipment Overview"}
             </h1>
+            <p className="text-sm text-slate-500 font-medium">
+              {new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+            </p>
           </div>
-          {liveUpdate && (
-            <div className="absolute right-0 top-0 px-4 py-1 bg-cyber-pink/20 border border-cyber-pink text-cyber-pink font-mono text-xs uppercase animate-pulse shadow-neon-pink">
-              Incoming Transmission...
+          <div className="flex items-center gap-4">
+            {liveUpdate && (
+              <div className="text-xs font-bold uppercase tracking-widest text-emerald-700 bg-emerald-50 border border-emerald-200 px-3 py-1.5 rounded-full flex items-center gap-2 shadow-sm">
+                <span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></span>
+                Live Sync
+              </div>
+            )}
+            <button
+              onClick={handleRunAnalysis}
+              disabled={loading}
+              className="text-xs font-semibold px-3 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 transition-colors"
+            >
+              {loading ? "Analyzing..." : "Run analysis"}
+            </button>
+            <div className="flex items-center gap-2 border border-slate-200 rounded-full py-1.5 px-3 bg-slate-50 shadow-sm">
+              <div className="w-6 h-6 bg-blue-600 rounded-full text-white flex items-center justify-center text-xs font-bold">
+                {user.name.charAt(0).toUpperCase()}
+              </div>
+              <span className="text-sm font-semibold text-slate-700">{user.name}</span>
             </div>
-          )}
-        </div>
+          </div>
+        </header>
 
-        {/* KPI Row */}
-        <div className="grid grid-cols-5 gap-4 mb-8">
-          <KpiCard label="Active Targets" value={shipments.length} color="var(--cyber-cyan)" />
-          <KpiCard label="Anomalies" value={disruptions.length} color="var(--cyber-purple)" />
-          <KpiCard label="Critical Risk" value={rb.HIGH} color="var(--cyber-pink)" />
-          <KpiCard label="Warning Level" value={rb.MEDIUM} color="var(--cyber-yellow)" />
-          <KpiCard label="Clear Routes" value={rb.SAFE} color="var(--cyber-green)" />
-        </div>
-
-        {/* Cyber Tabs */}
-        <div className="flex gap-4 mb-8 border-b-[2px] border-cyber-border/50 pb-[2px] relative z-20">
-          {TABS.map((t, i) => {
-            const isActive = tab === i;
-            return (
-              <button
-                key={t}
-                onClick={() => setTab(i)}
-                className={`group relative px-6 py-3 text-sm font-display tracking-widest uppercase transition-all duration-300 ${
-                  isActive 
-                    ? "text-black bg-cyber-cyan shadow-[0_0_15px_rgba(0,240,255,0.6)]" 
-                    : "text-cyber-cyan bg-black/40 hover:bg-cyber-cyan/20 border border-cyber-cyan/30 hover:border-cyber-cyan"
-                }`}
-                style={{ 
-                  clipPath: "polygon(15px 0, 100% 0, 100% calc(100% - 15px), calc(100% - 15px) 100%, 0 100%, 0 15px)" 
-                }}
-              >
-                {/* Tech corner accent for inactive tabs */}
-                {!isActive && (
-                  <div className="absolute top-0 right-0 w-3 h-3 border-r-2 border-t-2 border-cyber-cyan opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none"></div>
-                )}
-                
-                <span className={`mr-2 ${isActive ? 'opacity-80' : 'opacity-50'}`}>{TAB_ICONS[i]}</span> 
-                {t.replace("_", " ")}
-                
-                {isActive && (
-                  <div className="absolute bottom-0 left-0 w-full h-[2px] bg-white opacity-50"></div>
-                )}
-              </button>
-            );
-          })}
-        </div>
-
-        {/* Tab Content Wrapper */}
-        <div className="cyber-panel p-6 min-h-[500px]">
-          {loading ? (
-            <div className="flex flex-col items-center justify-center h-64 gap-4">
-              <div className="w-16 h-16 border-4 border-cyber-border border-t-cyber-cyan rounded-full animate-spin shadow-neon-cyan"></div>
-              <div className="text-cyber-cyan font-mono text-sm tracking-widest uppercase animate-pulse">Running Neural Pipeline...</div>
+        <div className="p-8 max-w-7xl mx-auto">
+          {view === "settings" ? (
+            <div className="saas-panel p-8">
+              <SettingsPanel onSeeded={loadAll} />
             </div>
           ) : (
             <>
-              {tab === 0 && <MapView shipments={shipments} disruptions={disruptions} recommendations={recs} />}
-              {tab === 1 && <ShipmentsTab shipments={shipments} recommendations={recs} />}
-              {tab === 2 && <DisruptionList disruptions={disruptions} collectorReasoning={pipeline?.collector_reasoning} />}
-              {tab === 3 && <RiskTable recommendations={recs} riskBreakdown={rb} />}
-              {tab === 4 && <RecommendationCards recommendations={recs} pipeline={pipeline} />}
+              <div className="grid grid-cols-4 gap-6 mb-8">
+                <KpiCard label="Total Shipments" value={shipments.length} icon={<Package className="w-5 h-5 text-blue-500" />} />
+                <KpiCard label="Active Anomalies" value={disruptions.length} icon={<AlertCircle className="w-5 h-5 text-indigo-500" />} />
+                <KpiCard label="Critical Risk" value={rb.HIGH} icon={<ShieldAlert className="w-5 h-5 text-red-500" />} />
+                <KpiCard label="Safe Routes" value={rb.SAFE} icon={<ShieldCheck className="w-5 h-5 text-emerald-500" />} />
+              </div>
+
+              {view === "dashboard" && (
+                <div className="saas-panel p-2 mb-6 inline-flex gap-1 bg-slate-100/50 shadow-none">
+                  {TABS.map((t, i) => (
+                    <button
+                      key={t}
+                      onClick={() => setTab(i)}
+                      className={`px-5 py-2 text-sm font-semibold rounded-md transition-all ${
+                        tab === i ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-900 hover:bg-slate-200/50"
+                      }`}
+                    >
+                      {t}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              <div className="saas-panel p-8 min-h-[500px]">
+                {loading ? (
+                  <div className="flex flex-col items-center justify-center h-64 gap-4">
+                    <div className="w-8 h-8 border-4 border-slate-200 border-t-blue-600 rounded-full animate-spin"></div>
+                    <div className="text-slate-500 text-sm font-semibold uppercase tracking-widest">Processing Data...</div>
+                  </div>
+                ) : (
+                  <>
+                    {view === "map" && (
+                      <MapView
+                        shipments={shipments}
+                        disruptions={disruptions}
+                        recommendations={recs}
+                        selectedShipmentId={simulatedShipmentId}
+                        onClearSimulation={() => setSimulatedShipmentId(null)}
+                      />
+                    )}
+                    {view === "shipments" && <ShipmentsTab shipments={shipments} recommendations={recs} onChanged={loadAll} />}
+                    {view === "dashboard" && tab === 0 && (
+                      <MapView
+                        shipments={shipments}
+                        disruptions={disruptions}
+                        recommendations={recs}
+                        selectedShipmentId={simulatedShipmentId}
+                        onClearSimulation={() => setSimulatedShipmentId(null)}
+                      />
+                    )}
+                    {view === "dashboard" && tab === 1 && <ShipmentsTab shipments={shipments} recommendations={recs} onChanged={loadAll} />}
+                    {view === "dashboard" && tab === 2 && <DisruptionList disruptions={disruptions} collectorReasoning={pipeline?.collector_reasoning} />}
+                    {view === "dashboard" && tab === 3 && <RiskTable recommendations={recs} riskBreakdown={rb} onRunAnalysis={handleRunAnalysis} loading={loading} />}
+                    {view === "dashboard" && tab === 4 && (
+                      <RecommendationCards
+                        recommendations={recs}
+                        pipeline={pipeline}
+                        onRunAnalysis={handleRunAnalysis}
+                        loading={loading}
+                        onSimulateRoute={(id) => {
+                          setSimulatedShipmentId(id);
+                          setTab(0);
+                        }}
+                      />
+                    )}
+                  </>
+                )}
+              </div>
             </>
           )}
         </div>
       </main>
-    </div>
-  );
-}
-
-// ── Inline Shipments Tab ──────────────────────────────────────────────────────
-function ShipmentsTab({ shipments, recommendations }: { shipments: Shipment[]; recommendations: Recommendation[] }) {
-  const riskLookup = Object.fromEntries(recommendations.map((r) => [r.shipment_id, r.risk_level]));
-  const [prioFilter, setPrioFilter] = useState<string[]>(["HIGH", "MEDIUM", "LOW"]);
-  const [riskFilter, setRiskFilter] = useState<string[]>(["HIGH", "MEDIUM", "LOW", "SAFE"]);
-
-  const toggleFilter = (val: string, arr: string[], set: (v: string[]) => void) => {
-    set(arr.includes(val) ? arr.filter((x) => x !== val) : [...arr, val]);
-  };
-
-  const getRiskColor = (rl: string) => {
-    return { HIGH: "var(--cyber-pink)", MEDIUM: "var(--cyber-yellow)", LOW: "var(--cyber-green)", SAFE: "var(--cyber-cyan)" }[rl] || "var(--cyber-cyan)";
-  };
-
-  const filtered = shipments.filter(
-    (s) => prioFilter.includes(s.delivery_priority) && riskFilter.includes(riskLookup[s.shipment_id] ?? "SAFE")
-  );
-
-  return (
-    <div>
-      <div className="flex justify-between items-end mb-6 border-b border-cyber-border pb-4">
-        <h2 className="text-xl font-bold text-cyber-text uppercase tracking-widest font-mono">
-          <span className="text-cyber-purple mr-2">::</span> Active Fleet Matrix
-        </h2>
-      </div>
-      
-      <div className="flex gap-8 mb-8 flex-wrap">
-        <div>
-          <p className="text-[10px] mb-3 text-cyber-muted font-mono tracking-widest uppercase">Filter / Priority</p>
-          <div className="flex gap-3">
-            {["HIGH", "MEDIUM", "LOW"].map((p) => {
-              const active = prioFilter.includes(p);
-              return (
-              <button key={p} onClick={() => toggleFilter(p, prioFilter, setPrioFilter)}
-                className={`px-4 py-1 text-xs font-mono transition-all border`}
-                style={{ 
-                  background: active ? "rgba(255,255,255,0.1)" : "transparent", 
-                  color: active ? "#e0f2ff" : "var(--cyber-muted)", 
-                  borderColor: active ? "var(--cyber-cyan)" : "var(--cyber-border)",
-                  clipPath: "polygon(5px 0, 100% 0, 100% calc(100% - 5px), calc(100% - 5px) 100%, 0 100%, 0 5px)"
-                }}>
-                {p}
-              </button>
-            )})}
-          </div>
-        </div>
-        <div>
-          <p className="text-[10px] mb-3 text-cyber-muted font-mono tracking-widest uppercase">Filter / Risk Level</p>
-          <div className="flex gap-3">
-            {["HIGH", "MEDIUM", "LOW", "SAFE"].map((r) => {
-              const active = riskFilter.includes(r);
-              const rc = getRiskColor(r);
-              return (
-              <button key={r} onClick={() => toggleFilter(r, riskFilter, setRiskFilter)}
-                className="px-4 py-1 text-xs font-mono transition-all border"
-                style={{ 
-                  background: active ? `${rc}22` : "transparent", 
-                  color: active ? rc : "var(--cyber-muted)", 
-                  borderColor: active ? rc : "var(--cyber-border)",
-                  clipPath: "polygon(5px 0, 100% 0, 100% calc(100% - 5px), calc(100% - 5px) 100%, 0 100%, 0 5px)",
-                  boxShadow: active ? `0 0 10px ${rc}44` : "none"
-                }}>
-                {r}
-              </button>
-            )})}
-          </div>
-        </div>
-      </div>
-
-      <div className="space-y-4">
-        {filtered.map((s) => {
-          const rl = riskLookup[s.shipment_id] ?? "SAFE";
-          const rc = getRiskColor(rl);
-          return (
-            <div key={s.shipment_id} className="relative p-4 flex items-center gap-6 bg-black/40 border border-cyber-border hover:border-cyber-cyan transition-colors"
-                 style={{ borderLeft: `4px solid ${rc}` }}>
-              <div className="p-3 bg-black border border-cyber-border min-w-[100px] text-center" style={{ clipPath: "polygon(0 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%)" }}>
-                <div className="font-mono font-bold text-lg" style={{ color: rc, textShadow: `0 0 8px ${rc}80` }}>{s.shipment_id}</div>
-                <div className="text-[10px] mt-1 text-cyber-muted uppercase tracking-widest">{s.delivery_priority} PR</div>
-              </div>
-              <div className="flex-1">
-                <div className="font-bold text-cyber-text text-lg uppercase tracking-wide flex items-center gap-3">
-                  {s.origin} <span className="text-cyber-cyan font-mono">-&gt;</span> {s.destination}
-                </div>
-                <div className="text-xs mt-2 text-cyber-muted font-mono flex gap-4">
-                  <span>🛣️ {s.route_highway}</span>
-                  <span className="text-cyber-border">|</span>
-                  <span>📦 {s.cargo_type ?? "CARGO"}</span>
-                  <span className="text-cyber-border">|</span>
-                  <span>⚖️ {s.weight_kg ?? 0} KG</span>
-                </div>
-              </div>
-              <div className="text-right flex flex-col items-end gap-2">
-                {s.estimated_delivery_time && (
-                  <div className="text-xs font-mono text-cyber-muted bg-white/5 px-2 py-1 border border-cyber-border">
-                    ETA: {new Date(s.estimated_delivery_time).toLocaleDateString("en-IN", { day: "2-digit", month: "short" }).toUpperCase()}
-                  </div>
-                )}
-                <span className="px-3 py-1 text-[10px] font-bold font-mono tracking-widest uppercase border"
-                  style={{ background: `${rc}11`, color: rc, borderColor: rc, boxShadow: `0 0 10px ${rc}44` }}>
-                  [{rl} RISK]
-                </span>
-              </div>
-            </div>
-          );
-        })}
-      </div>
     </div>
   );
 }

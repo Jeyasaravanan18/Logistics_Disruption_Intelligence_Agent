@@ -1,72 +1,99 @@
+import json
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from contextlib import asynccontextmanager
-from database import engine, Base, AsyncSessionLocal
-import crud
-import os
-import json
+from fastapi.responses import JSONResponse
+from jose import JWTError
 import redis.asyncio as aioredis
-from routers import shipments, disruptions, risk_analysis
+
+from config import ALLOWED_ORIGINS, COOKIE_ACCESS_NAME, IS_PRODUCTION, REDIS_URL
+from database import close_db, connect_db, get_database
+from routers import auth, disruptions, risk_analysis, shipments
+from routers.auth import get_user_from_token
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Create DB tables
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-    
-    # Seed data
-    async with AsyncSessionLocal() as session:
-        await crud.init_mock_data(session)
-        
+    await connect_db()
+    db = get_database()
+    try:
+        await db.users.create_index("email", unique=True)
+        try:
+            await db.shipments.drop_index("shipment_id_1")
+        except Exception:
+            pass
+        await db.shipments.create_index(
+            [("owner_id", 1), ("shipment_id", 1)], unique=True, name="owner_shipment_unique"
+        )
+        await db.refresh_tokens.create_index("token_hash", unique=True)
+        await db.refresh_tokens.create_index("expires_at", expireAfterSeconds=0)
+    except Exception as exc:
+        print(f"[MongoDB] Index setup notice: {exc}")
     yield
+    await close_db()
+
 
 app = FastAPI(
     title="Logistics Disruption Intelligence Agent API",
-    description="Production Architecture with Postgres & Redis",
-    version="2.0.0",
-    lifespan=lifespan
+    description="Multi-tenant disruption intelligence API",
+    version="3.0.0",
+    lifespan=lifespan,
+    docs_url=None if IS_PRODUCTION else "/docs",
+    redoc_url=None if IS_PRODUCTION else "/redoc",
 )
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type"],
 )
 
+app.include_router(auth.router, tags=["Auth"])
 app.include_router(shipments.router, tags=["Shipments"])
 app.include_router(disruptions.router, tags=["Disruptions"])
 app.include_router(risk_analysis.router, tags=["Risk Analysis"])
 
-REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 
 @app.websocket("/ws/risk-updates")
 async def websocket_endpoint(websocket: WebSocket):
+    token = websocket.query_params.get("token") or websocket.cookies.get(COOKIE_ACCESS_NAME)
+    if not token:
+        await websocket.close(code=4401)
+        return
+
+    try:
+        user = await get_user_from_token(token, get_database())
+    except JWTError:
+        await websocket.close(code=4401)
+        return
+
     await websocket.accept()
-    
+    owner_id = str(user["id"])
     redis_client = None
     pubsub = None
-    
     try:
         redis_client = await aioredis.from_url(REDIS_URL, decode_responses=True)
         pubsub = redis_client.pubsub()
         await pubsub.subscribe("risk_updates")
-        
         async for message in pubsub.listen():
-            if message["type"] == "message":
-                data = json.loads(message["data"])
-                await websocket.send_json({"event": "analysis_complete", "data": data})
-                
-    except Exception as e:
-        print(f"[WebSocket] Falling back to polling mode (Redis not available): {e}")
-        # Keep connection alive without Redis so frontend doesn't throw errors
+            if message["type"] != "message":
+                continue
+            data = json.loads(message["data"])
+            if data.get("owner_id") and data["owner_id"] != owner_id:
+                continue
+            await websocket.send_json({"event": "analysis_complete", "data": data})
+    except WebSocketDisconnect:
+        pass
+    except Exception as exc:
+        print(f"[WebSocket] Redis unavailable, keeping socket idle: {exc}")
         try:
             while True:
                 await websocket.receive_text()
         except WebSocketDisconnect:
             pass
-            
     finally:
         if pubsub:
             await pubsub.unsubscribe("risk_updates")
@@ -78,11 +105,32 @@ async def websocket_endpoint(websocket: WebSocket):
 async def root():
     return {
         "status": "online",
-        "message": "Logistics Disruption Intelligence Agent API",
-        "endpoints": ["/shipments", "/disruptions", "/risk-analysis", "/docs"],
+        "database": "MongoDB",
+        "version": "3.0.0",
+        "endpoints": ["/health", "/auth/login", "/shipments", "/disruptions", "/risk-analysis"],
     }
 
 
 @app.get("/health", tags=["Health"])
 async def health():
-    return {"status": "healthy"}
+    checks = {"api": "ok", "mongodb": "down", "redis": "down"}
+    try:
+        await get_database().command("ping")
+        checks["mongodb"] = "ok"
+    except Exception as exc:
+        checks["mongodb"] = str(exc)
+
+    try:
+        client = aioredis.from_url(REDIS_URL, decode_responses=True)
+        pong = await client.ping()
+        await client.close()
+        checks["redis"] = "ok" if pong else "down"
+    except Exception as exc:
+        checks["redis"] = str(exc)
+
+    healthy = checks["mongodb"] == "ok"
+    payload = {
+        "status": "healthy" if healthy else "degraded",
+        "checks": checks,
+    }
+    return JSONResponse(payload, status_code=200 if healthy else 503)

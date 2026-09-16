@@ -1,7 +1,34 @@
+# Dependencies
 node_modules/
-.next/
-__pycache__/
 venv/
 env/
-.env
+.venv/
+
+# Next.js Build
+.next/
+out/
+
+# Python & Caching
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+
+# Local Database & Storage
 *.db
+*.sqlite3
+backend/data/mongodb_data/
+backend/data/mongod.log*
+
+# Logs & Debug
+*.log
+backend/*.log
+backend/scratch_*.py
+
+# Environment & Secrets
+.env
+.env.local
+.env.production
+.DS_Store
+Thumbs.db
