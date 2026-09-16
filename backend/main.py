@@ -96,9 +96,15 @@ async def websocket_endpoint(websocket: WebSocket):
             pass
     finally:
         if pubsub:
-            await pubsub.unsubscribe("risk_updates")
+            try:
+                await pubsub.unsubscribe("risk_updates")
+            except Exception:
+                pass
         if redis_client:
-            await redis_client.close()
+            try:
+                await redis_client.close()
+            except Exception:
+                pass
 
 
 @app.get("/", tags=["Health"])
