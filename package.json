@@ -1,0 +1,11 @@
+{
+  "name": "logistics-disruption-intelligence-agent",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Logistics Disruption Intelligence Agent - Enterprise Fleet Operations",
+  "scripts": {
+    "dev": "npm run dev --prefix frontend",
+    "build": "npm run build --prefix frontend",
+    "start": "npm run start --prefix frontend"
+  }
+}
