@@ -1,9 +1,18 @@
+const rawBackend = process.env.NEXT_PUBLIC_BACKEND_URL;
+const isProd = process.env.NODE_ENV === "production";
+const productionBackendUrl = "https://logistics-hackathon.onrender.com";
+
+const resolvedBackend =
+  rawBackend && !rawBackend.includes("localhost") && !rawBackend.includes("127.0.0.1")
+    ? rawBackend
+    : (isProd ? productionBackendUrl : "http://localhost:8000");
+
 export const BACKEND =
   typeof window !== "undefined"
     ? "/api"
-    : process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000";
+    : resolvedBackend;
 
-export const BACKEND_WS = (process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000")
+export const BACKEND_WS = resolvedBackend
   .replace("http://", "ws://")
   .replace("https://", "wss://");
 
