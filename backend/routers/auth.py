@@ -104,7 +104,7 @@ async def register(
     user: schemas.UserCreate,
     db: AsyncIOMotorDatabase = Depends(get_database),
 ):
-    enforce_rate_limit(client_key(request, "register"), limit=8)
+    enforce_rate_limit(client_key(request, "register"), limit=60, window_seconds=60)
     existing = await crud.get_user_by_email(db, user.email)
     if existing:
         raise HTTPException(status_code=400, detail="Email already registered")
@@ -127,7 +127,7 @@ async def login(
     form_data: OAuth2PasswordRequestForm = Depends(),
     db: AsyncIOMotorDatabase = Depends(get_database),
 ):
-    enforce_rate_limit(client_key(request, "login"), limit=10)
+    enforce_rate_limit(client_key(request, "login"), limit=120, window_seconds=60)
     user = await crud.get_user_by_email(db, form_data.username)
     if not user or not verify_password(form_data.password, user.get("hashed_password", "")):
         raise HTTPException(

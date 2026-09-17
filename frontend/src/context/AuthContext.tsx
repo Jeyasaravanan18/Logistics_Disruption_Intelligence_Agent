@@ -40,9 +40,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             setAccessToken(tokens.access_token);
             sessionStorage.setItem("ws_token", tokens.access_token);
           }
+          const profile = await fetchMe();
+          setUser(profile);
+        } else {
+          setUser(null);
         }
-        const profile = await fetchMe();
-        setUser(profile);
       } catch {
         setUser(null);
       } finally {

@@ -17,6 +17,12 @@ export default function RegisterPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
+
+    if (password.length < 8 || !/[a-zA-Z]/.test(password) || !/[0-9]/.test(password)) {
+      setError("Password must be at least 8 characters and include both letters and numbers.");
+      return;
+    }
+
     setLoading(true);
     
     try {

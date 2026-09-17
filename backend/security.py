@@ -71,13 +71,13 @@ def extract_bearer_or_cookie(request: Request, cookie_name: str) -> str | None:
     return request.cookies.get(cookie_name)
 
 
-def enforce_rate_limit(key: str, limit: int = 10, window_seconds: int = 900) -> None:
+def enforce_rate_limit(key: str, limit: int = 120, window_seconds: int = 60) -> None:
     now = time()
     recent = [t for t in _rate_hits[key] if now - t < window_seconds]
     if len(recent) >= limit:
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail="Too many attempts. Please wait and try again.",
+            detail="Too many attempts. Please wait a few moments and try again.",
         )
     recent.append(now)
     _rate_hits[key] = recent
