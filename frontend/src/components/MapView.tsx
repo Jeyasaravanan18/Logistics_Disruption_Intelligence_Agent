@@ -257,10 +257,10 @@ export default function MapView({
   return (
     <div className="h-[540px] w-full rounded-xl overflow-hidden saas-panel p-0 relative shadow-md">
       <MapContainer center={[20.5937, 78.9629]} zoom={5} className="h-full w-full">
-        {/* Modern Carto Voyager light tile layer */}
+        {/* OpenStreetMap Free Tile Layer (No API Key Required) */}
         <TileLayer
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a>'
-          url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
+          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
 
         {/* Render Disruptions as pulsing zones */}
