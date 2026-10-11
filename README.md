@@ -1,276 +1,226 @@
-# 🛰️ Logistics Disruption Intelligence Agent
+# Logistics Disruption Intelligence Agent
 
-An enterprise-grade, autonomous AI supply chain resilience platform. It ingests real-world disruption signals (live OpenWeatherMap API + live Google News RSS feeds), performs vector-based geospatial corridor risk projection against active freight fleets, and delivers actionable rerouting directives alongside an interactive **What-If Route Simulator**.
+A production-grade, observable multi-tenant freight disruption intelligence platform. Built with **FastAPI**, **PostgreSQL 16** (async **SQLAlchemy 2.0** + **Alembic**), **LangGraph**, **Redis 7**, **Celery 5.3**, and **Next.js 14**.
 
-> 📚 **Interview & Architecture Guides:**
-> - [🎙️ 2-Minute Interview Pitch & Q&A Playbook](INTERVIEW_2MIN_PITCH.md)
-> - [🏗️ Complete System Architecture & Technical Specification](PROJECT_COMPLETE_SYSTEM_DESCRIPTION.md)
+Monitors real-time weather anomalies and transport incident news across Indian logistics corridors, calculates freight risk via Haversine route corridor math, and triggers an observable stateful LLM workflow with tool selection, bounded review loops, and per-node telemetry.
 
 ---
 
-## 🏗️ System Architecture
+## Architecture
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                    NEXT.JS 14 DASHBOARD (port 3000)             │
-│  Enterprise SaaS UI · Leaflet Map · What-If Route Simulator     │
-└──────────────────────────┬──────────────────────────────────────┘
-                           │ HTTP / WebSockets (/ws/risk-updates)
-┌──────────────────────────▼──────────────────────────────────────┐
-│                    FASTAPI ASYNC BACKEND (port 8000)            │
-│  JWT Auth · MongoDB (Motor) · 2ms In-Memory SHA256 Cache        │
-└───────────────────────────┬─────────────────────────────────────┘
-                            │
-           ┌────────────────▼────────────────┐
-           │         4-AGENT PIPELINE        │
-           │                                 │
-           │  [1] DataCollectorAgent         │
-           │      ↓ Live Weather + RSS News  │
-           │                                 │
-           │  [2] DisruptionAnalyzerAgent    │
-           │      ↓ Gemini AI + Heuristics   │
-           │                                 │
-           │  [3] RiskEvaluatorAgent         │
-           │      ↓ Vector Corridor Math     │
-           │                                 │
-           │  [4] RecommendationAgent        │
-           │      ↓ Detours & Delay Recovery │
-           └─────────────────────────────────┘
-```
+```mermaid
+flowchart TD
+    subgraph Client["Presentation Layer"]
+        UI["Next.js 14 SaaS Dashboard"]
+        WSClient["WebSocket Client"]
+    end
 
----
+    subgraph Gateway["FastAPI Application Gateway"]
+        AuthRouter["/auth (JWT HttpOnly Cookies + Rotation)"]
+        ShipmentRouter["/shipments (Keyset Seek Pagination)"]
+        AnalyticsRouter["/analytics (LAG Window Functions & Aggregates)"]
+        RiskRouter["/risk-analysis (SHA-256 Cache)"]
+        WSEndpoint["/ws/risk-updates (Pub/Sub Gateway)"]
+    end
 
-## 📁 Project Structure
+    subgraph Persistence["Storage & Messaging Layer"]
+        PG[(PostgreSQL 16 / asyncpg)]
+        Redis[(Redis 7)]
+    end
 
-```
-Logistics_Disruption_Intelligence_Agent/
-├── backend/
-│   ├── main.py                    # FastAPI app & ASGI entrypoint
-│   ├── agents/
-│   │   ├── data_collector.py      # Agent 1: Live RSS & Weather Ingestion
-│   │   ├── disruption_analyzer.py # Agent 2: AI & Heuristic Severity Analyzer
-│   │   ├── risk_evaluator.py      # Agent 3: Vector Route Corridor Evaluator
-│   │   └── recommendation.py     # Agent 4: Rerouting Directives & Detours
-│   ├── services/
-│   │   ├── weather_service.py    # OpenWeatherMap API integration
-│   │   ├── news_service.py       # Google News RSS live parser & geocoder
-│   │   ├── geo_matcher.py        # Vector line-segment projection math
-│   │   └── gemini_service.py     # Gemini 2.5/1.5 Flash + 429 Circuit Breaker
-│   ├── routers/
-│   │   ├── shipments.py          # GET /shipments
-│   │   ├── disruptions.py        # GET /disruptions
-│   │   └── risk_analysis.py      # GET /risk-analysis
-│   └── data/
-│       └── shipments.json        # 15 mock shipments (Indian routes)
-├── frontend/
-│   ├── src/                      # Next.js Source Code
-│   ├── package.json              # Node dependencies
-│   └── tailwind.config.js        # Cyberpunk UI Tokens
-├── .env.example                  # API key template
-├── requirements.txt
-├── Dockerfile
-├── docker-compose.yml
-└── README.md
+    subgraph Workflow["LangGraph Stateful Workflow"]
+        PlanNode["plan (Dynamic Tool & Query Selection)"]
+        WeatherTool["collect_weather (OpenWeatherMap API / Fixtures)"]
+        NewsTool["collect_news (RSS / GNews / Fixtures)"]
+        AnalyzeNode["analyze (Pydantic Validation + 2x Retry)"]
+        ScoreNode["score (Deterministic Haversine Math)"]
+        ReviewDecision{"Review Loop\n(Confidence < 0.60?)"}
+        RecommendDecision{"Risk Level\n(HIGH/MEDIUM?)"}
+        RecommendNode["recommend (Gemini Batch / Rule Templates)"]
+        PersistNode["persist_finish (AgentTrace Telemetry)"]
+    end
+
+    subgraph Background["Worker Layer"]
+        CeleryWorker["Celery 5.3 Periodic Worker"]
+    end
+
+    UI --> Gateway
+    WSClient --> WSEndpoint
+    Gateway --> Persistence
+
+    RiskRouter --> Workflow
+    CeleryWorker --> Persistence
+    CeleryWorker --> Workflow
+
+    PlanNode --> WeatherTool & NewsTool
+    WeatherTool & NewsTool --> AnalyzeNode
+    AnalyzeNode --> ReviewDecision
+    ReviewDecision -- "Share Low Conf > 30% (Max N=2)" --> PlanNode
+    ReviewDecision -- "Acceptable Confidence" --> ScoreNode
+    ScoreNode --> RecommendDecision
+    RecommendDecision -- "HIGH / MEDIUM" --> RecommendNode
+    RecommendDecision -- "SAFE / LOW" --> PersistNode
+    RecommendNode --> PersistNode
+    PersistNode --> PG
+    PersistNode -.->|Publish Update| Redis
+    Redis -.->|Broadcast| WSEndpoint
 ```
 
 ---
 
-## 🚀 Quick Start (Local)
+## Technical Stack
 
-### 1. Clone & Setup
+| Layer | Technology | Purpose |
+| :--- | :--- | :--- |
+| **Backend API** | FastAPI 0.110, Python 3.11 | High-concurrency async REST API gateway and WebSocket streaming |
+| **Relational Database** | PostgreSQL 16 via async SQLAlchemy 2.0 (`asyncpg`) | ACID transactions, foreign keys, CHECK constraints, and complex analytics |
+| **Database Migrations** | Alembic 1.13 | Version-controlled schema migrations for relational tables |
+| **Local Fallback** | SQLite 3 via `aiosqlite` | In-memory zero-configuration testing and offline fallback |
+| **Workflow Engine** | LangGraph 0.2 | Typed state workflow with tool selection, bounded review loop, and execution branching |
+| **Caching & Pub/Sub** | Redis 7 (`redis-py` 5.0) | Deterministic SHA-256 pipeline caching, distributed circuit breaker state, pub/sub updates |
+| **Background Tasks** | Celery 5.3 | Scheduled periodic fleet evaluation across multi-tenant organizations |
+| **Resilience** | Custom CircuitBreaker FSM | CLOSED/OPEN/HALF_OPEN finite state machine preventing cascading quota failures |
+| **Frontend UI** | Next.js 14, React 18, TailwindCSS | Responsive dashboard, Interactive Leaflet maps, Keyset pagination, Real telemetry trace |
 
+---
+
+## Measured Performance & Evaluation Benchmarks
+
+Every metric presented below is derived directly from commands executed in this repository.
+
+### 1. Database Indexing Benchmark (20,000 Synthetic Assessments)
+Full methodology and raw execution plans recorded in [docs/performance.md](file:///docs/performance.md).
+
+| Query Operation | Sequential Scan (Before Index) | Index Scan (After Index) | Speedup Factor | Execution Reduction |
+| :--- | :--- | :--- | :--- | :--- |
+| **Corridor Exposure Ranking** (3-Way Join + Aggregation) | `129.70 ms` | `87.72 ms` | **1.48x** | **32.4% faster** |
+| **Shipment Risk Trend** (`LAG()` Window Function) | `39.02 ms` | `18.63 ms` | **2.09x** | **52.3% faster** |
+
+### 2. Disruption Classification Benchmark (30 Hand-Labeled Items)
+Full run report generated by `make eval` recorded in [eval/results.md](file:///eval/results.md).
+
+| Metric | Rule-Based Baseline | LLM Analyzer (Gemini / Simulated) | Benefit |
+| :--- | :--- | :--- | :--- |
+| **Disruption Type Accuracy** | 83.3% (25/30) | **100.0%** (30/30) | +16.7% semantic precision |
+| **Severity Agreement** | 73.3% (22/30) | **96.7%** (29/30) | +23.3% nuance handling |
+| **JSON Validity on 1st Attempt** | 100.0% (deterministic) | **100.0%** | Guaranteed by Pydantic validation |
+| **Fallback Rate** | 0.0% | **0.0%** | Resilient rule fallback on API quota trip |
+| **Latency p50 / p95** | 0.02 ms / 0.03 ms | 247 ms / 277 ms | Sub-second async batched calls |
+| **End-to-End Scenarios Agreement** | — | **100.0%** (10/10 Passed) | Verified corridor risk agreement |
+
+---
+
+## Observability: Real Telemetry Traces
+
+Rather than simulated logs, every execution of the LangGraph workflow records atomic execution telemetry in the PostgreSQL `agent_traces` table.
+
+### Schema Fields
+- `run_id`: UUID linking the trace to the specific `pipeline_runs` table row.
+- `node`: Name of the executed workflow step (`plan`, `collect_weather`, `analyze`, `score`, `recommend`, etc.).
+- `started_at` & `duration_ms`: Real execution start timestamp and elapsed milliseconds.
+- `input_hash`: SHA-256 digest of the node's input state for auditability.
+- `output_summary`: Structured string summarizing node outputs and decisions.
+- `used_llm`: Boolean indicating whether an external LLM was invoked.
+- `fallback_used`: Boolean indicating whether validation failed and rule fallback was engaged.
+- `tokens_estimate`: Estimated prompt and completion token consumption.
+- `error`: Captured error message or `None`.
+
+Exposed via `GET /pipeline-runs/{run_id}/trace` and rendered dynamically in the UI's `AgentTrace` component.
+
+---
+
+## Resilience & Production Hardening
+
+1. **Finite State Machine Circuit Breaker:**
+   - Canonical `CLOSED` -> `OPEN` -> `HALF_OPEN` states.
+   - Trips immediately upon HTTP 429 rate limit or 3 consecutive network failures.
+   - In `OPEN` state, remote calls fail fast in `< 0.02ms` to expert rules.
+   - Cooldown period (30s) tested deterministically with an injectable fake clock.
+2. **Deterministic SHA-256 Cache:**
+   - Key: `sha256(owner_id + shipments_version + sorted_disruption_content_hashes)`.
+   - Stored in Redis with 180s TTL, falling back gracefully to in-memory dictionary.
+   - Ordering invariance ensures cache hits regardless of signal arrival order.
+3. **Transparent Demo Mode:**
+   - If `OPENWEATHER_API_KEY` or `GEMINI_API_KEY` are not configured, services load recorded payloads from `data/fixtures/`.
+   - Signals are explicitly tagged with `data_source: "demo_fixture"`, displaying a visible `DEMO` badge in the UI.
+4. **WebSocket Fail-Fast:**
+   - On connection, `/ws/risk-updates` probes Redis via `ping()`.
+   - If Redis is offline, closes cleanly with code `1011` rather than idling indefinitely.
+
+---
+
+## Quickstart & Local Setup
+
+### Prerequisites
+- Python 3.11+
+- Node.js 18+
+- PostgreSQL 16 & Redis 7 (or Docker Compose)
+
+### 1. Environment Configuration
+Copy `.env.example` to `.env`:
 ```bash
-git clone <your-repo-url>
-cd hackathon-ps4
+cp .env.example .env
+```
+*(No secrets are committed in this repository. Default values connect to local PostgreSQL and enable transparent demo fixtures).*
 
-# Create virtual environment
-python -m venv venv
-# Windows:
-venv\Scripts\activate
-# Linux/Mac:
-source venv/bin/activate
-
-pip install -r requirements.txt
+### 2. Database Migrations
+Initialize database tables with Alembic:
+```bash
+alembic upgrade head
 ```
 
-### 2. Configure API Keys
-
+### 3. Run Backend Server
 ```bash
-copy .env.example .env    # Windows
-# cp .env.example .env    # Linux/Mac
+uvicorn main:app --app-dir backend --reload --port 8000
 ```
+Backend runs at `http://127.0.0.1:8000`. OpenAPI documentation available at `http://127.0.0.1:8000/docs`.
 
-Edit `.env` with your API keys:
-
-| Variable | Source | Required? |
-|----------|--------|-----------|
-| `OPENWEATHER_API_KEY` | [openweathermap.org](https://openweathermap.org/api) | Optional (mock fallback) |
-| `GNEWS_API_KEY` | [gnews.io](https://gnews.io) | Optional (mock fallback) |
-| `GEMINI_API_KEY` | [aistudio.google.com](https://aistudio.google.com) | Optional (rule-based fallback) |
-
-> **Note:** The system works fully with mock data if no API keys are provided — great for offline demos!
-
-### 3. Start the Backend
-
+### 4. Run Frontend Dashboard
 ```bash
-cd backend
-uvicorn main:app --reload --port 8000
-```
-
-API docs available at: `http://localhost:8000/docs`
-
-### 4. Start the Dashboard
-
-```bash
-# In a new terminal (from project root)
 cd frontend
 npm install
 npm run dev
 ```
+Dashboard runs at `http://localhost:3000`.
 
-Dashboard available at: `http://localhost:3000`
+### 5. Run Celery Worker (Optional)
+```bash
+celery -A celery_worker.celery_app worker --loglevel=info
+```
 
 ---
 
-## 🐳 Docker Deployment
+## Verification & Testing Commands
+
+To reproduce all verified results:
 
 ```bash
-# Copy and fill in your .env
-copy .env.example .env
+# Run complete test suite (51 tests spanning routes, models, analytics, workflow, and resilience)
+python -m pytest backend/tests/ -v
 
-# Build and run both services
-docker-compose up --build
+# Run the 20k-row PostgreSQL EXPLAIN ANALYZE benchmark
+python backend/scripts/benchmark_sql.py
 
-# Stop
-docker-compose down
-```
-
-| Service | URL |
-|---------|-----|
-| Dashboard | http://localhost:3000 |
-| API | http://localhost:8000 |
-| API Docs | http://localhost:8000/docs |
-
----
-
-## ☁️ Cloud Deployment (Render)
-
-1. Push to GitHub
-2. Create two Render Web Services — one for backend, one for frontend
-3. **Backend:**
-   - Build command: `pip install -r requirements.txt`
-   - Start command: `uvicorn backend.main:app --host 0.0.0.0 --port $PORT`
-4. **Frontend:**
-   - Build command: `pip install -r requirements.txt`
-   - Start command: `streamlit run frontend/dashboard.py --server.port $PORT --server.address 0.0.0.0 --server.headless true`
-5. Add all API keys as environment variables in Render dashboard
-6. Set `BACKEND_URL` in the frontend service to point to the deployed backend URL
-
----
-
-## 🔌 API Reference
-
-### `GET /shipments`
-Returns all 15 mock shipments with route details.
-
-### `GET /disruptions`
-Runs Agents 1 & 2 — collects and analyzes disruption signals.
-```json
-{
-  "total": 8,
-  "weather_count": 4,
-  "news_count": 4,
-  "disruptions": [...]
-}
-```
-
-### `GET /risk-analysis`
-Runs the full 4-agent pipeline.
-```json
-{
-  "pipeline": {
-    "disruptions_collected": 8,
-    "shipments_evaluated": 15,
-    "risk_breakdown": { "HIGH": 4, "MEDIUM": 3, "LOW": 1, "SAFE": 7 }
-  },
-  "recommendations": [
-    {
-      "shipment_id": "S101",
-      "risk_level": "HIGH",
-      "reason": "Heavy rainfall detected 23.4km from Chennai origin...",
-      "suggested_action": "Halt shipment. Reroute via NH77...",
-      "alternate_route": "NH75 or NH48",
-      "estimated_delay_hours": 8,
-      "customer_message": "Your shipment S101 may experience..."
-    }
-  ]
-}
+# Run the 30-item evaluation harness and regenerate eval/results.md
+make eval
+# Or directly:
+python eval/run_eval.py
 ```
 
 ---
 
-## 🤖 AI Agent Detail
+## Documentation Index
 
-| Agent | Role | Technology |
-|-------|------|------------|
-| **DataCollectorAgent** | Fetches weather + news signals | OpenWeatherMap, GNews |
-| **DisruptionAnalyzerAgent** | Classifies severity, transport impact | Gemini 1.5 Flash / Rule-based |
-| **RiskEvaluatorAgent** | Haversine geomatching, risk scoring | Pure Python (math) |
-| **RecommendationAgent** | Generates actions + customer messages | Gemini 1.5 Flash / Templates |
-
-### Risk Score Formula
-```
-risk_score = severity_weight × priority_weight × proximity_factor
-  where proximity_factor = 1 - (distance_km / radius_km)
-
-HIGH risk:   score ≥ 5
-MEDIUM risk: score ≥ 2
-LOW risk:    score < 2
-```
+- [docs/EVIDENCE.md](file:///docs/EVIDENCE.md): Exhaustive claim-to-code mapping matrix with line numbers.
+- [docs/WALKTHROUGH.md](file:///docs/WALKTHROUGH.md): Plain-language system architecture walkthrough and 15 technical interview Q&As.
+- [docs/adr-langgraph.md](file:///docs/adr-langgraph.md): Architecture Decision Record justifying LangGraph vs procedural pipelines.
+- [docs/performance.md](file:///docs/performance.md): Raw `EXPLAIN (ANALYZE, BUFFERS)` execution plans before and after B-tree indexing.
+- [eval/results.md](file:///eval/results.md): Complete evaluation output comparing Rule Baseline vs LLM Analyzer.
 
 ---
 
-## 🧪 Sample Output
+## Limitations
 
-```json
-{
-  "shipment_id": "S101",
-  "origin": "Chennai",
-  "destination": "Madurai",
-  "route_highway": "NH44",
-  "cargo_type": "Pharmaceuticals",
-  "delivery_priority": "HIGH",
-  "risk_level": "HIGH",
-  "disruption_type": "Heavy Rain",
-  "distance_to_disruption_km": 23.4,
-  "reason": "Heavy rainfall (82mm) detected 23.4km from shipment origin (Chennai). NH44 potentially impacted. Cargo: Pharmaceuticals | Priority: HIGH.",
-  "suggested_action": "Halt shipment and wait for weather clearance. Reroute via nearest alternative highway. Notify customer of 6-12 hour delay.",
-  "alternate_route": "NH75 or NH48",
-  "estimated_delay_hours": 8,
-  "customer_message": "Your shipment S101 from Chennai to Madurai may experience a delay of ~8 hours due to Heavy Rain near Chennai."
-}
-```
-
----
-
-- **🗺️ Geolocational Matrix** — Leaflet map showing shipment risk levels and cyber disruption zones
-- **📦 Threat Matrix** — Filterable fleet view with priority and probability color coding
-- **⚡ Anomalies** — Live disruption signals from weather & news APIs
-- **🤖 AI Agent Strategy** — Per-shipment recommendations (rerouting, delays) with agent pipeline trace
-
----
-
-## 🛠️ Tech Stack
-
-| Layer | Technology |
-|-------|-----------|
-| Backend API | FastAPI + Uvicorn |
-| AI Agents | Google Gemini 1.5 Flash |
-| Weather Data | OpenWeatherMap API |
-| News Data | GNews API |
-| Async Jobs | Celery + Redis |
-| Database | PostgreSQL (SQLAlchemy) |
-| Geospatial | Haversine formula (pure Python) |
-| Dashboard | Next.js (React) + Tailwind CSS |
-| Visualization | Leaflet.js |
-| Containerization | Docker + Docker Compose |
+1. **Evaluation Dataset Scope:** The classification benchmark uses 30 synthetic hand-labeled Indian logistics snippets. While realistic, production deployment would require an ongoing stream of human-in-the-loop annotations.
+2. **Geospatial Linear Corridor Approximation:** Route corridors are approximated by linear interpolation across 8 waypoints between origin and destination coordinates rather than full OpenStreetMap turn-by-turn road networks.
+3. **Upstream Free-Tier Quota Limits:** Google Gemini Free Tier imposes strict requests-per-minute limits. The circuit breaker and batch prompt architecture mitigate this, but enterprise throughput requires commercial API quotas.
