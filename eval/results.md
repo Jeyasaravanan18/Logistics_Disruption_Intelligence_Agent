@@ -1,6 +1,6 @@
 # System Evaluation & Benchmark Report
 
-- **Run Date:** 2026-10-11 09:54:34 UTC
+- **Run Date:** 2026-10-11 10:15:10 UTC
 - **Evaluated Model:** Simulated LLM (No API Key detected)
 - **Classification Dataset Size:** 30 hand-labeled realistic headlines/snippets
 - **E2E Scenarios Dataset Size:** 10 multi-corridor transit scenarios
@@ -16,8 +16,8 @@
 | **Severity Agreement** | 73.3% (22/30) | 96.7% (29/30) | +23.3% |
 | **JSON Validity (1st try)** | 100.0% (deterministic) | 100.0% | Enforced by Pydantic + 2x retry |
 | **Fallback Rate** | 0.0% | 0.0% | Graceful rule-fallback on quota/timeout |
-| **Latency p50** | 0.02 ms | 247.00 ms | Sub-second async batched calls |
-| **Latency p95** | 0.03 ms | 277.00 ms | Bounded by 5.0s client timeout |
+| **Latency p50** | 0.02 ms | 256.00 ms | Sub-second async batched calls |
+| **Latency p95** | 0.03 ms | 278.00 ms | Bounded by 5.0s client timeout |
 
 ---
 
