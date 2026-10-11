@@ -3,6 +3,14 @@ FastAPI ASGI application entry point.
 Lifespan manages SQLAlchemy 2.0 connection pool and relational migrations.
 """
 
+import os
+import sys
+
+# Ensure backend directory is in sys.path when imported as a package
+_BACKEND_DIR = os.path.dirname(os.path.abspath(__file__))
+if _BACKEND_DIR not in sys.path:
+    sys.path.insert(0, _BACKEND_DIR)
+
 from contextlib import asynccontextmanager
 import json
 
