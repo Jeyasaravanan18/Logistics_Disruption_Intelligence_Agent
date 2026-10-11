@@ -21,6 +21,17 @@ if DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql+asyncpg://", 1)
 elif DATABASE_URL.startswith("postgresql://") and not DATABASE_URL.startswith("postgresql+asyncpg://"):
     DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://", 1)
+
+# Clean query parameters incompatible with asyncpg (like sslmode, channel_binding)
+if "asyncpg" in DATABASE_URL:
+    from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
+    _parsed = urlsplit(DATABASE_URL)
+    if _parsed.query:
+        _params = dict(parse_qsl(_parsed.query))
+        _params.pop("sslmode", None)
+        _params.pop("channel_binding", None)
+        DATABASE_URL = urlunsplit((_parsed.scheme, _parsed.netloc, _parsed.path, urlencode(_params), _parsed.fragment))
+
 SQLITE_FALLBACK_URL = os.getenv("SQLITE_FALLBACK_URL", "sqlite+aiosqlite:///./logistics.db")
 
 REDIS_URL = os.getenv("REDIS_URL", "redis://127.0.0.1:6379/0")

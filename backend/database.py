@@ -50,6 +50,9 @@ async def init_db(override_url: str | None = None) -> AsyncEngine:
         connect_args = {}
         if "sqlite" in target_url:
             connect_args["check_same_thread"] = False
+        elif "asyncpg" in target_url:
+            if any(host in target_url for host in ("neon.tech", "supabase.co", "render.com", "aivencloud.com")):
+                connect_args["ssl"] = "require"
 
         test_engine = create_async_engine(
             target_url,
