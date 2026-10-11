@@ -44,14 +44,30 @@ export interface Recommendation {
   distance_to_disruption_km?: number;
 }
 
+export interface AgentTraceItem {
+  id?: string;
+  node: string;
+  started_at: string;
+  duration_ms: number;
+  input_hash?: string;
+  output_summary: string;
+  used_llm: boolean;
+  fallback_used: boolean;
+  tokens_estimate?: number;
+  error?: string | null;
+}
+
 export interface PipelineInfo {
+  run_id?: string;
   disruptions_collected: number;
   shipments_evaluated: number;
   risk_breakdown: { HIGH: number; MEDIUM: number; LOW: number; SAFE: number };
   collector_reasoning: string;
+  traces?: AgentTraceItem[];
 }
 
 export interface RiskAnalysis {
   pipeline: PipelineInfo;
   recommendations: Recommendation[];
 }
+

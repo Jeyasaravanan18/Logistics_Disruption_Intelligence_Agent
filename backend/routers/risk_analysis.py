@@ -56,7 +56,7 @@ async def get_risk_analysis(
 
     # 3. Compute live pipeline
     shipments = await crud.get_shipments(db, owner_id)
-    result = await run_pipeline(shipments)
+    result = await run_pipeline(shipments, db=db, owner_id=owner_id)
     _MEM_CACHE[owner_id] = (now, result)
     return result
 
@@ -68,7 +68,7 @@ async def run_risk_analysis(
 ):
     owner_id = owner_id_from_user(current_user)
     shipments = await crud.get_shipments(db, owner_id)
-    result = await run_pipeline(shipments)
+    result = await run_pipeline(shipments, db=db, owner_id=owner_id)
 
     # Update in-memory cache
     _MEM_CACHE[owner_id] = (time.time(), result)
@@ -80,3 +80,22 @@ async def run_risk_analysis(
     except Exception:
         pass
     return result
+
+
+@router.get("/pipeline-runs/{run_id}/trace")
+async def get_pipeline_run_trace(
+    run_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    """
+    Retrieve real per-node execution telemetry traces for the specified workflow run.
+    Returns timing, prompt token estimates, LLM usage, and fallback indicators.
+    """
+    traces = await crud.get_agent_traces(db, run_id)
+    return {
+        "run_id": run_id,
+        "count": len(traces),
+        "traces": traces,
+    }
+

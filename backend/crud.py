@@ -487,6 +487,32 @@ async def finish_pipeline_run(
     await db.commit()
 
 
+async def update_pipeline_run(
+    db: AsyncSession,
+    run_id: str,
+    disruptions_count: int = 0,
+    shipments_count: int = 0,
+    high_count: int = 0,
+    medium_count: int = 0,
+    low_count: int = 0,
+    safe_count: int = 0,
+    status: str = "COMPLETED",
+    reasoning: str | None = None,
+) -> None:
+    """Convenience updater for pipeline runs with explicit parameters."""
+    counts = {
+        "disruptions_collected": disruptions_count,
+        "shipments_evaluated": shipments_count,
+        "risk_breakdown": {
+            "HIGH": high_count,
+            "MEDIUM": medium_count,
+            "LOW": low_count,
+            "SAFE": safe_count,
+        },
+    }
+    await finish_pipeline_run(db, run_id, counts=counts, reasoning=reasoning or "", status=status)
+
+
 async def get_pipeline_run(db: AsyncSession, run_id: str) -> PipelineRun | None:
     """Retrieve PipelineRun by ID."""
     stmt = select(PipelineRun).where(PipelineRun.id == run_id)
@@ -548,6 +574,9 @@ async def save_assessments_and_recommendations(
     await db.commit()
 
 
+save_pipeline_results = save_assessments_and_recommendations
+
+
 async def save_agent_traces(
     db: AsyncSession,
     run_id: str,
@@ -555,10 +584,21 @@ async def save_agent_traces(
 ) -> None:
     """Persist per-node workflow execution traces for observable telemetry."""
     for t in traces:
+        sa = t.get("started_at")
+        if isinstance(sa, str):
+            try:
+                started_dt = datetime.fromisoformat(sa)
+            except Exception:
+                started_dt = utcnow()
+        elif isinstance(sa, datetime):
+            started_dt = sa
+        else:
+            started_dt = utcnow()
+
         row = AgentTrace(
             run_id=run_id,
             node=t.get("node", "unknown"),
-            started_at=t.get("started_at", utcnow()),
+            started_at=started_dt,
             duration_ms=float(t.get("duration_ms", 0.0)),
             input_hash=t.get("input_hash"),
             output_summary=t.get("output_summary"),

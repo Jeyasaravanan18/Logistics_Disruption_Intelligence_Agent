@@ -1,9 +1,8 @@
 from datetime import datetime
+from typing import Any, Optional
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from agents.data_collector import collect_disruptions
-from agents.disruption_analyzer import analyze_disruptions
-from agents.recommendation import generate_recommendations
-from agents.risk_evaluator import evaluate_shipment_risks
+from workflow.graph import execute_workflow
 
 
 def serialize_shipment(doc: dict) -> dict:
@@ -24,24 +23,20 @@ def serialize_shipment(doc: dict) -> dict:
     }
 
 
-async def run_pipeline(shipments_raw: list[dict]) -> dict:
-    collected = await collect_disruptions()
-    analyzed = await analyze_disruptions(collected["disruptions"])
+async def run_pipeline(
+    shipments_raw: list[dict],
+    db: Optional[AsyncSession] = None,
+    owner_id: str = "default_operator",
+    run_id: Optional[str] = None,
+) -> dict[str, Any]:
+    """
+    Execute the LangGraph disruption intelligence workflow.
+    Executes planning -> collection -> analysis -> scoring -> bounded review -> recommendation -> persistence.
+    """
     shipments = [serialize_shipment(s) for s in shipments_raw]
-    risk_records = evaluate_shipment_risks(analyzed, shipments)
-    recommendations = await generate_recommendations(risk_records)
-
-    risk_counts = {"HIGH": 0, "MEDIUM": 0, "LOW": 0, "SAFE": 0}
-    for rec in recommendations:
-        level = rec.get("risk_level", "SAFE")
-        risk_counts[level] = risk_counts.get(level, 0) + 1
-
-    return {
-        "pipeline": {
-            "disruptions_collected": len(analyzed),
-            "shipments_evaluated": len(recommendations),
-            "risk_breakdown": risk_counts,
-            "collector_reasoning": collected.get("reasoning", ""),
-        },
-        "recommendations": recommendations,
-    }
+    return await execute_workflow(
+        shipments=shipments,
+        owner_id=owner_id,
+        db=db,
+        run_id=run_id,
+    )
