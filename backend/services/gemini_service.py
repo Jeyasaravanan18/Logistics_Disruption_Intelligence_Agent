@@ -41,7 +41,12 @@ gemini_circuit_breaker = CircuitBreaker(
     redis_client=_get_redis_client(),
 )
 
-MODELS_TO_TRY = ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-2.5-flash-lite"]
+MODELS_TO_TRY = [
+    os.getenv("GEMINI_MODEL", "gemini-3.8-flash"),
+    "gemini-2.5-flash",
+    "gemini-2.0-flash",
+    "gemini-1.5-flash",
+]
 
 
 async def generate_gemini_json(prompt: str, system_instruction: str = "") -> dict | None:
@@ -66,10 +71,10 @@ async def generate_gemini_json(prompt: str, system_instruction: str = "") -> dic
         },
     }
 
-    for model in MODELS_TO_TRY[:2]:
+    for model in MODELS_TO_TRY:
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
         try:
-            async with httpx.AsyncClient(timeout=5.0) as client:
+            async with httpx.AsyncClient(timeout=10.0) as client:
                 resp = await client.post(url, json=payload)
                 if resp.status_code == 200:
                     data = resp.json()
