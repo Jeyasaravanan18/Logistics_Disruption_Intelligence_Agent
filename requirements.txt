@@ -4,7 +4,6 @@ httpx==0.27.0
 python-dotenv==1.0.1
 pydantic>=2.7.4
 email-validator>=2.1.0
-requests==2.31.0
 bcrypt>=4.1.0
 
 # Database - MongoDB
@@ -12,12 +11,7 @@ motor>=3.3.0
 pymongo>=4.6.0
 dnspython>=2.7.0
 
-# AI & Ingestion
-google-generativeai>=0.5.4
-feedparser>=6.0.10
-
 # Authentication & Security
-passlib[bcrypt]>=1.7.4
 python-jose[cryptography]>=3.3.0
 python-multipart>=0.0.9
 

@@ -30,3 +30,9 @@ COOKIE_SECURE = IS_PRODUCTION
 COOKIE_SAMESITE = "lax"
 COOKIE_ACCESS_NAME = "access_token"
 COOKIE_REFRESH_NAME = "refresh_token"
+
+# Geospatial & Risk Scoring Constants (Single Source of Truth)
+DEFAULT_RADIUS_KM: float = float(os.getenv("DEFAULT_RADIUS_KM", "150.0"))
+RISK_THRESHOLD_HIGH: float = float(os.getenv("RISK_THRESHOLD_HIGH", "4.5"))
+RISK_THRESHOLD_MEDIUM: float = float(os.getenv("RISK_THRESHOLD_MEDIUM", "1.8"))
+CORRIDOR_NUM_SAMPLES: int = int(os.getenv("CORRIDOR_NUM_SAMPLES", "8"))

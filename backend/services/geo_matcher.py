@@ -4,6 +4,12 @@ to match disruptions to active shipment routes (origin, transit corridor, destin
 """
 
 import math
+from config import (
+    CORRIDOR_NUM_SAMPLES,
+    DEFAULT_RADIUS_KM,
+    RISK_THRESHOLD_HIGH,
+    RISK_THRESHOLD_MEDIUM,
+)
 
 CITY_COORDINATES = {
     "Chennai": (13.0827, 80.2707),
@@ -71,7 +77,7 @@ def min_distance_to_route_corridor(
 def match_disruptions_to_shipments(
     disruptions: list[dict],
     shipments: list[dict],
-    radius_km: float = 120.0,
+    radius_km: float = DEFAULT_RADIUS_KM,
 ) -> list[dict]:
     """
     Match each disruption to shipments within radius_km of their origin, destination,
@@ -96,7 +102,7 @@ def match_disruptions_to_shipments(
             if dest_coords:
                 dest_lat, dest_lon = dest_coords
                 distance = min_distance_to_route_corridor(
-                    d_lat, d_lon, s_lat, s_lon, dest_lat, dest_lon, num_samples=8
+                    d_lat, d_lon, s_lat, s_lon, dest_lat, dest_lon, num_samples=CORRIDOR_NUM_SAMPLES
                 )
             else:
                 distance = haversine_km(d_lat, d_lon, s_lat, s_lon)
@@ -117,7 +123,7 @@ def compute_risk_score(
     disruption_severity: str,
     delivery_priority: str,
     distance_km: float,
-    radius_km: float = 120.0,
+    radius_km: float = DEFAULT_RADIUS_KM,
 ) -> tuple[str, float]:
     """
     Compute numeric risk score and label based on:
@@ -134,12 +140,13 @@ def compute_risk_score(
 
     score = severity_weight * priority_weight * proximity_factor
 
-    if score >= 4.5:
+    if score >= RISK_THRESHOLD_HIGH:
         risk_level = "HIGH"
-    elif score >= 1.8:
+    elif score >= RISK_THRESHOLD_MEDIUM:
         risk_level = "MEDIUM"
     else:
         risk_level = "LOW"
 
     return risk_level, round(score, 2)
+
 

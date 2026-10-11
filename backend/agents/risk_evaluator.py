@@ -3,21 +3,18 @@ Agent 3: Shipment Risk Evaluation Agent
 Responsibility: Matches analyzed disruptions to shipments and assigns risk levels with reasoning.
 """
 
-import json
-import os
-from services.geo_matcher import match_disruptions_to_shipments, compute_risk_score
-
-SHIPMENTS_PATH = os.path.join(os.path.dirname(__file__), "..", "data", "shipments.json")
+from config import DEFAULT_RADIUS_KM
+from services.geo_matcher import compute_risk_score, match_disruptions_to_shipments
 
 
 def evaluate_shipment_risks(analyzed_disruptions: list[dict], shipments: list[dict]) -> list[dict]:
     """
-    Agent 3 main function: Evaluate risk for every shipment against all disruptions.
+    Evaluate risk for every shipment against all disruptions.
     Produces a risk record per affected shipment.
     """
-    print("[RiskEvaluatorAgent] Evaluating risks for shipments...")
+    print("[RiskEvaluator] Evaluating risks for shipments...")
 
-    matches = match_disruptions_to_shipments(analyzed_disruptions, shipments, radius_km=150)
+    matches = match_disruptions_to_shipments(analyzed_disruptions, shipments, radius_km=DEFAULT_RADIUS_KM)
 
     # Build per-shipment worst-case risk (a shipment may be near multiple disruptions)
     shipment_risks: dict[str, dict] = {}
@@ -32,7 +29,7 @@ def evaluate_shipment_risks(analyzed_disruptions: list[dict], shipments: list[di
             disruption_severity=disruption.get("severity", "LOW"),
             delivery_priority=shipment.get("delivery_priority", "LOW"),
             distance_km=distance_km,
-            radius_km=150,
+            radius_km=DEFAULT_RADIUS_KM,
         )
 
         highway = shipment.get("route_highway", "")
@@ -88,7 +85,7 @@ def evaluate_shipment_risks(analyzed_disruptions: list[dict], shipments: list[di
                     "disruption_type": None,
                     "disruption_location": None,
                     "distance_to_disruption_km": None,
-                    "reason": "No active disruptions detected within 150km of this route.",
+                    "reason": f"No active disruptions detected within {int(DEFAULT_RADIUS_KM)}km of this route.",
                     "impact_duration_hours": 0,
                     "agent": "RiskEvaluatorAgent",
                 }

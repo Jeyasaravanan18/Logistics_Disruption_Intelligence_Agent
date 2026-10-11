@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Optional
 
-from pydantic import BaseModel, EmailStr, Field, field_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
 
 class ShipmentBase(BaseModel):
@@ -52,9 +52,7 @@ class ShipmentUpdate(BaseModel):
 
 class ShipmentOut(ShipmentBase):
     shipment_id: str
-
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class ShipmentListResponse(BaseModel):
@@ -79,9 +77,8 @@ class UserResponse(BaseModel):
     id: Optional[str] = None
     email: str
     name: str
+    model_config = ConfigDict(from_attributes=True)
 
-    class Config:
-        from_attributes = True
 
 
 class Token(BaseModel):

@@ -17,7 +17,9 @@ __pycache__/
 
 # Local Database & Storage
 *.db
+*.sqlite
 *.sqlite3
+mongodb_data/
 backend/data/mongodb_data/
 backend/data/mongod.log*
 
@@ -25,10 +27,13 @@ backend/data/mongod.log*
 *.log
 backend/*.log
 backend/scratch_*.py
+backend/verify_*.py
 
-# Environment & Secrets
-.env
-.env.local
-.env.production
+# Environment & Secrets (Never commit .env files)
+**/.env
+**/.env.*
+!.env.example
+!frontend/.env.example
 .DS_Store
 Thumbs.db
+
