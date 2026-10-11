@@ -10,7 +10,7 @@ import os
 from datetime import datetime, timezone
 from typing import Any, Optional
 
-from sqlalchemy import delete, desc, distinct, func, select, update
+from sqlalchemy import delete, desc, distinct, func, select, text, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -77,6 +77,40 @@ async def get_shipments(
     )
     result = await db.execute(stmt)
     return [_shipment_to_dict(s) for s in result.scalars().all()]
+
+
+async def get_shipments_keyset(
+    db: AsyncSession,
+    owner_id: str,
+    limit: int = 50,
+    cursor: str | None = None,
+) -> dict:
+    """
+    Keyset pagination for shipments using (shipment_id ASC) ordering.
+    O(1) B-tree seek avoiding OFFSET performance degradation.
+    """
+    limit = min(max(limit, 1), 200)
+    stmt = (
+        select(Shipment)
+        .where(Shipment.owner_id == owner_id)
+        .order_by(Shipment.shipment_id.asc())
+    )
+    if cursor:
+        stmt = stmt.where(Shipment.shipment_id > cursor)
+    stmt = stmt.limit(limit + 1)
+
+    result = await db.execute(stmt)
+    rows = result.scalars().all()
+
+    has_more = len(rows) > limit
+    returned_rows = rows[:limit]
+    next_cursor = returned_rows[-1].shipment_id if (has_more and returned_rows) else None
+
+    return {
+        "count": len(returned_rows),
+        "shipments": [_shipment_to_dict(s) for s in returned_rows],
+        "next_cursor": next_cursor,
+    }
 
 
 async def get_shipment_by_id(
@@ -560,3 +594,262 @@ async def get_agent_traces(db: AsyncSession, run_id: str) -> list[dict]:
         }
         for r in result.scalars().all()
     ]
+
+
+# ============================================================================
+# Analytical SQL Queries (Phase 2)
+# ============================================================================
+
+
+async def get_dashboard_kpis(
+    db: AsyncSession,
+    owner_id: str,
+    run_id: str | None = None,
+) -> dict:
+    """
+    Dashboard KPIs for the latest pipeline run (or specified run_id).
+    Uses aggregate functions with FILTER clause for single-pass aggregation.
+    """
+    stmt = (
+        select(
+            PipelineRun.id.label("run_id"),
+            PipelineRun.started_at,
+            PipelineRun.status,
+            func.count(RiskAssessment.id).label("total_assessments"),
+            func.count(RiskAssessment.id).filter(RiskAssessment.level == "HIGH").label("high_risk_count"),
+            func.count(RiskAssessment.id).filter(RiskAssessment.level == "MEDIUM").label("medium_risk_count"),
+            func.count(RiskAssessment.id).filter(RiskAssessment.level == "LOW").label("low_risk_count"),
+            func.count(RiskAssessment.id).filter(RiskAssessment.level == "SAFE").label("safe_risk_count"),
+            func.coalesce(func.avg(RiskAssessment.score), 0.0).label("avg_risk_score"),
+            func.coalesce(func.max(RiskAssessment.score), 0.0).label("max_risk_score"),
+        )
+        .outerjoin(RiskAssessment, RiskAssessment.run_id == PipelineRun.id)
+        .where(PipelineRun.owner_id == owner_id)
+    )
+    if run_id:
+        stmt = stmt.where(PipelineRun.id == run_id)
+    stmt = (
+        stmt.group_by(PipelineRun.id, PipelineRun.started_at, PipelineRun.status)
+        .order_by(PipelineRun.started_at.desc())
+        .limit(1)
+    )
+
+    result = await db.execute(stmt)
+    row = result.first()
+    if not row or not row.run_id:
+        return {
+            "run_id": None,
+            "started_at": None,
+            "status": None,
+            "total_assessments": 0,
+            "counts_by_level": {"HIGH": 0, "MEDIUM": 0, "LOW": 0, "SAFE": 0},
+            "avg_risk_score": 0.0,
+            "max_risk_score": 0.0,
+        }
+
+    return {
+        "run_id": row.run_id,
+        "started_at": row.started_at.isoformat() if row.started_at else None,
+        "status": row.status,
+        "total_assessments": int(row.total_assessments or 0),
+        "counts_by_level": {
+            "HIGH": int(row.high_risk_count or 0),
+            "MEDIUM": int(row.medium_risk_count or 0),
+            "LOW": int(row.low_risk_count or 0),
+            "SAFE": int(row.safe_risk_count or 0),
+        },
+        "avg_risk_score": round(float(row.avg_risk_score or 0.0), 2),
+        "max_risk_score": round(float(row.max_risk_score or 0.0), 2),
+    }
+
+
+async def get_risk_trends(
+    db: AsyncSession,
+    owner_id: str,
+) -> list[dict]:
+    """
+    Calculate risk score change per shipment vs. previous run using LAG() window function.
+    Identifies if a shipment's risk increased, decreased, stayed stable, or is newly analyzed.
+    """
+    subq = (
+        select(
+            Shipment.shipment_id,
+            Shipment.origin,
+            Shipment.destination,
+            Shipment.route_highway,
+            PipelineRun.id.label("run_id"),
+            PipelineRun.started_at.label("run_started_at"),
+            RiskAssessment.score.label("current_score"),
+            RiskAssessment.level.label("current_level"),
+            func.lag(RiskAssessment.score)
+            .over(
+                partition_by=RiskAssessment.shipment_id,
+                order_by=PipelineRun.started_at.asc(),
+            )
+            .label("previous_score"),
+            func.row_number()
+            .over(
+                partition_by=RiskAssessment.shipment_id,
+                order_by=PipelineRun.started_at.desc(),
+            )
+            .label("rn"),
+        )
+        .join(PipelineRun, PipelineRun.id == RiskAssessment.run_id)
+        .join(Shipment, Shipment.id == RiskAssessment.shipment_id)
+        .where(PipelineRun.owner_id == owner_id)
+        .subquery()
+    )
+
+    stmt = (
+        select(subq)
+        .where(subq.c.rn == 1)
+        .order_by(desc(subq.c.current_score), subq.c.shipment_id.asc())
+    )
+
+    result = await db.execute(stmt)
+    rows = result.all()
+
+    trends = []
+    for r in rows:
+        curr = float(r.current_score)
+        prev = float(r.previous_score) if r.previous_score is not None else None
+        delta = round(curr - prev, 2) if prev is not None else None
+
+        if prev is None:
+            trend = "NEW"
+        elif delta > 0.05:
+            trend = "INCREASED"
+        elif delta < -0.05:
+            trend = "DECREASED"
+        else:
+            trend = "STABLE"
+
+        trends.append({
+            "shipment_id": r.shipment_id,
+            "origin": r.origin,
+            "destination": r.destination,
+            "route_highway": r.route_highway,
+            "current_score": round(curr, 2),
+            "current_level": r.current_level,
+            "previous_score": round(prev, 2) if prev is not None else None,
+            "score_delta": delta,
+            "trend": trend,
+            "latest_run_id": r.run_id,
+        })
+
+    return trends
+
+
+async def get_corridor_exposure(
+    db: AsyncSession,
+    owner_id: str,
+    min_assessments: int = 1,
+) -> list[dict]:
+    """
+    Corridor exposure ranking: joins shipments, assessments, and disruptions.
+    Aggregates risk exposure by route_highway corridor using GROUP BY, HAVING, and multi-col ORDER BY.
+    """
+    stmt = (
+        select(
+            Shipment.route_highway.label("corridor"),
+            func.count(distinct(Shipment.id)).label("active_shipments"),
+            func.count(RiskAssessment.id).label("total_assessments"),
+            func.count(distinct(Disruption.id)).label("unique_disruptions"),
+            func.avg(RiskAssessment.score).label("avg_risk_score"),
+            func.count(RiskAssessment.id).filter(RiskAssessment.level == "HIGH").label("high_risk_count"),
+            func.count(RiskAssessment.id).filter(RiskAssessment.level == "MEDIUM").label("medium_risk_count"),
+            func.count(RiskAssessment.id).filter(RiskAssessment.level == "LOW").label("low_risk_count"),
+        )
+        .join(RiskAssessment, RiskAssessment.shipment_id == Shipment.id)
+        .join(Disruption, Disruption.id == RiskAssessment.disruption_id)
+        .where(Shipment.owner_id == owner_id)
+        .group_by(Shipment.route_highway)
+        .having(func.count(RiskAssessment.id) >= min_assessments)
+        .order_by(desc("avg_risk_score"), desc("high_risk_count"))
+    )
+
+    result = await db.execute(stmt)
+    rows = result.all()
+    return [
+        {
+            "corridor": r.corridor,
+            "active_shipments": int(r.active_shipments or 0),
+            "total_assessments": int(r.total_assessments or 0),
+            "unique_disruptions": int(r.unique_disruptions or 0),
+            "avg_risk_score": round(float(r.avg_risk_score or 0.0), 2),
+            "high_risk_count": int(r.high_risk_count or 0),
+            "medium_risk_count": int(r.medium_risk_count or 0),
+            "low_risk_count": int(r.low_risk_count or 0),
+        }
+        for r in rows
+    ]
+
+
+async def get_disruption_timeline(
+    db: AsyncSession,
+    days: int = 7,
+) -> list[dict]:
+    """
+    Timeline of disruptions across the last N days with zero-filled days.
+    Uses PostgreSQL date_trunc + generate_series, with SQLite recursive CTE fallback.
+    """
+    days = min(max(days, 1), 60)
+    dialect_name = db.bind.dialect.name if db.bind else "postgresql"
+
+    if dialect_name == "postgresql":
+        query = text("""
+            WITH day_series AS (
+                SELECT generate_series(
+                    CURRENT_DATE - (:days - 1) * INTERVAL '1 day',
+                    CURRENT_DATE,
+                    INTERVAL '1 day'
+                )::date AS day_bucket
+            )
+            SELECT 
+                to_char(day_series.day_bucket, 'YYYY-MM-DD') AS day,
+                COUNT(d.id) AS total_disruptions,
+                COUNT(d.id) FILTER (WHERE d.severity = 'HIGH') AS high_count,
+                COUNT(d.id) FILTER (WHERE d.severity = 'MEDIUM') AS medium_count,
+                COUNT(d.id) FILTER (WHERE d.severity = 'LOW') AS low_count
+            FROM day_series
+            LEFT JOIN disruptions d 
+                ON date_trunc('day', d.valid_from) = day_series.day_bucket
+            GROUP BY day_series.day_bucket
+            ORDER BY day_series.day_bucket ASC;
+        """)
+        result = await db.execute(query, {"days": days})
+    else:
+        query = text("""
+            WITH RECURSIVE day_series(day_str) AS (
+                SELECT date('now', '-' || (:days - 1) || ' days')
+                UNION ALL
+                SELECT date(day_str, '+1 day')
+                FROM day_series
+                WHERE day_str < date('now')
+            )
+            SELECT 
+                day_series.day_str AS day,
+                COUNT(d.id) AS total_disruptions,
+                COUNT(CASE WHEN d.severity = 'HIGH' THEN 1 END) AS high_count,
+                COUNT(CASE WHEN d.severity = 'MEDIUM' THEN 1 END) AS medium_count,
+                COUNT(CASE WHEN d.severity = 'LOW' THEN 1 END) AS low_count
+            FROM day_series
+            LEFT JOIN disruptions d 
+                ON substr(d.valid_from, 1, 10) = day_series.day_str
+            GROUP BY day_series.day_str
+            ORDER BY day_series.day_str ASC;
+        """)
+        result = await db.execute(query, {"days": days})
+
+    rows = result.all()
+    return [
+        {
+            "day": str(r[0]),
+            "total_disruptions": int(r[1] or 0),
+            "high_count": int(r[2] or 0),
+            "medium_count": int(r[3] or 0),
+            "low_count": int(r[4] or 0),
+        }
+        for r in rows
+    ]
+

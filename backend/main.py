@@ -15,7 +15,7 @@ from sqlalchemy import text
 
 from config import ALLOWED_ORIGINS, COOKIE_ACCESS_NAME, IS_PRODUCTION, REDIS_URL
 from database import close_db, get_active_url, get_engine, get_sessionmaker, init_db
-from routers import auth, disruptions, risk_analysis, shipments
+from routers import analytics, auth, disruptions, risk_analysis, shipments
 from routers.auth import get_user_from_token
 
 
@@ -48,6 +48,7 @@ app.include_router(auth.router, tags=["Auth"])
 app.include_router(shipments.router, tags=["Shipments"])
 app.include_router(disruptions.router, tags=["Disruptions"])
 app.include_router(risk_analysis.router, tags=["Risk Analysis"])
+app.include_router(analytics.router, tags=["Analytics"])
 
 
 @app.websocket("/ws/risk-updates")
@@ -114,7 +115,7 @@ async def root():
         "database": "PostgreSQL (SQLAlchemy 2.0 with SQLite fallback)",
         "active_db": get_active_url(),
         "version": "3.0.0",
-        "endpoints": ["/health", "/auth/login", "/shipments", "/disruptions", "/risk-analysis"],
+        "endpoints": ["/health", "/auth/login", "/shipments", "/disruptions", "/risk-analysis", "/analytics"],
     }
 
 

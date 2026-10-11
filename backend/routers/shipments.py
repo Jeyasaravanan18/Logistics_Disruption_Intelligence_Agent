@@ -22,12 +22,21 @@ def _public_shipment(doc: dict) -> dict:
 async def list_shipments(
     skip: int = 0,
     limit: int = 100,
+    cursor: str | None = None,
     db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
+    """
+    List shipments for authenticated user.
+    Supports keyset seek pagination via 'cursor' or offset pagination via 'skip' and 'limit'.
+    """
+    owner_id = owner_id_from_user(current_user)
+    if cursor is not None:
+        return await crud.get_shipments_keyset(db, owner_id, limit=limit, cursor=cursor)
+
     limit = min(max(limit, 1), 200)
-    shipments = await crud.get_shipments(db, owner_id_from_user(current_user), skip=skip, limit=limit)
-    return {"count": len(shipments), "shipments": shipments}
+    shipments = await crud.get_shipments(db, owner_id, skip=skip, limit=limit)
+    return {"count": len(shipments), "shipments": shipments, "next_cursor": None}
 
 
 @router.post("/shipments", response_model=schemas.ShipmentOut, status_code=201)

@@ -58,6 +58,7 @@ class ShipmentOut(ShipmentBase):
 class ShipmentListResponse(BaseModel):
     count: int
     shipments: list[ShipmentOut]
+    next_cursor: Optional[str] = None
 
 
 class UserCreate(BaseModel):
@@ -105,3 +106,72 @@ class ChangePasswordRequest(BaseModel):
 
 class RefreshRequest(BaseModel):
     refresh_token: Optional[str] = None
+
+
+# ============================================================================
+# Analytical SQL Schemas (Phase 2)
+# ============================================================================
+
+
+class RiskBreakdownCounts(BaseModel):
+    HIGH: int = 0
+    MEDIUM: int = 0
+    LOW: int = 0
+    SAFE: int = 0
+
+
+class DashboardKPIsResponse(BaseModel):
+    run_id: Optional[str] = None
+    started_at: Optional[str] = None
+    status: Optional[str] = None
+    total_assessments: int = 0
+    counts_by_level: RiskBreakdownCounts
+    avg_risk_score: float = 0.0
+    max_risk_score: float = 0.0
+
+
+class RiskTrendItem(BaseModel):
+    shipment_id: str
+    origin: str
+    destination: str
+    route_highway: str
+    current_score: float
+    current_level: str
+    previous_score: Optional[float] = None
+    score_delta: Optional[float] = None
+    trend: str  # "INCREASED", "DECREASED", "STABLE", "NEW"
+    latest_run_id: str
+
+
+class RiskTrendsResponse(BaseModel):
+    count: int
+    trends: list[RiskTrendItem]
+
+
+class CorridorExposureItem(BaseModel):
+    corridor: str
+    active_shipments: int
+    total_assessments: int
+    unique_disruptions: int
+    avg_risk_score: float
+    high_risk_count: int
+    medium_risk_count: int
+    low_risk_count: int
+
+
+class CorridorExposureResponse(BaseModel):
+    corridors: list[CorridorExposureItem]
+
+
+class DisruptionTimelineItem(BaseModel):
+    day: str
+    total_disruptions: int
+    high_count: int
+    medium_count: int
+    low_count: int
+
+
+class DisruptionTimelineResponse(BaseModel):
+    days_analyzed: int
+    timeline: list[DisruptionTimelineItem]
+
