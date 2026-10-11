@@ -42,20 +42,23 @@ async def _run_async_pipeline() -> None:
 
         for owner_id in owner_ids:
             shipments = await crud.get_shipments(db, owner_id)
-            payload = await run_pipeline(shipments)
-            redis_client.setex(
-                f"latest_risk_analysis:{owner_id}",
-                3600,
-                json.dumps(payload, default=str),
-            )
-            redis_client.publish(
-                "risk_updates",
-                json.dumps({"status": "updated", "owner_id": owner_id}),
-            )
+            payload = await run_pipeline(shipments, db=db, owner_id=owner_id)
+            try:
+                redis_client.setex(
+                    f"latest_risk_analysis:{owner_id}",
+                    3600,
+                    json.dumps(payload, default=str),
+                )
+                redis_client.publish(
+                    "risk_updates",
+                    json.dumps({"status": "updated", "owner_id": owner_id}),
+                )
+            except Exception as re:
+                print(f"[CeleryTask] Redis cache update notice: {re}")
             print(f"[CeleryTask] Cached analysis for owner {owner_id}")
 
 
 @celery_app.task(bind=True, autoretry_for=(Exception,), retry_backoff=True, max_retries=3)
-def run_risk_analysis_pipeline(self):
+def run_risk_analysis_pipeline(self=None):
     asyncio.run(_run_async_pipeline())
     return "Pipeline Complete"
