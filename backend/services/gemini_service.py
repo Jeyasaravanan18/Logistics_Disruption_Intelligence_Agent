@@ -83,22 +83,20 @@ async def generate_gemini_json(prompt: str, system_instruction: str = "") -> dic
                     gemini_circuit_breaker.record_success()
                     return parsed
                 elif resp.status_code == 429:
-                    print(f"[GeminiService] Rate limit / Quota exceeded (429) on {model}.", flush=True)
-                    gemini_circuit_breaker.record_failure(is_quota_error=True)
-                    break
+                    print(f"[GeminiService] Rate limit (429) on {model}, trying next model in cascade.", flush=True)
+                    continue
                 elif resp.status_code in (500, 502, 503, 504):
-                    print(f"[GeminiService] Upstream 5xx on {model} ({resp.status_code}).", flush=True)
-                    gemini_circuit_breaker.record_failure(is_quota_error=False)
-                    break
+                    print(f"[GeminiService] Upstream 5xx on {model} ({resp.status_code}), trying next model.", flush=True)
+                    continue
                 elif resp.status_code in (403, 404):
                     print(f"[GeminiService] Model {model} unavailable ({resp.status_code}), trying next.", flush=True)
                     continue
                 else:
-                    gemini_circuit_breaker.record_failure(is_quota_error=False)
-                    break
+                    print(f"[GeminiService] Status {resp.status_code} on {model}, trying next.", flush=True)
+                    continue
         except Exception as e:
-            print(f"[GeminiService] Call to {model} failed with exception: {e}", flush=True)
-            gemini_circuit_breaker.record_failure(is_quota_error=False)
-            break
+            print(f"[GeminiService] Call to {model} failed with exception: {e}, trying next.", flush=True)
+            continue
 
+    gemini_circuit_breaker.record_failure(is_quota_error=False)
     return None

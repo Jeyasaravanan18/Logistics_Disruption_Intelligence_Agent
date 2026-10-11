@@ -81,7 +81,7 @@ class ResilienceCache:
     def set(self, key: str, value: Any, ttl_seconds: Optional[int] = None) -> None:
         """Store serialized payload with TTL expiration."""
         ttl = ttl_seconds if ttl_seconds is not None else self.default_ttl
-        payload = json.dumps(value)
+        payload = json.dumps(value, default=str)
         now = self.clock()
 
         # Store in Redis

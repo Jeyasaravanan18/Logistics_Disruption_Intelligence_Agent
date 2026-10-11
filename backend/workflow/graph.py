@@ -109,6 +109,7 @@ async def execute_workflow(
             db.add(pipeline_run)
             await db.commit()
         except Exception as exc:
+            await db.rollback()
             print(f"[WorkflowGraph] Notice: could not record initial pipeline_run ({exc})")
 
     initial_state: WorkflowState = {
@@ -165,6 +166,7 @@ async def execute_workflow(
                 reasoning=final_state["plan"].get("reasoning", "Completed stateful workflow."),
             )
         except Exception as exc:
+            await db.rollback()
             print(f"[WorkflowGraph] Database persistence warning: {exc}")
 
     return {

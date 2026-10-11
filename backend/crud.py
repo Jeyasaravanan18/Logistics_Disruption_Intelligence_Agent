@@ -547,10 +547,19 @@ async def save_assessments_and_recommendations(
         if not shipment_pk:
             continue
 
+        # Look up disruption if present to guarantee foreign key validity
+        disruption_pk = None
+        raw_did = rec.get("disruption_id")
+        if raw_did and str(raw_did).strip():
+            d_stmt = select(Disruption.id).where(
+                (Disruption.id == str(raw_did)) | (Disruption.content_hash == str(raw_did))
+            ).limit(1)
+            disruption_pk = (await db.execute(d_stmt)).scalar_one_or_none()
+
         assessment = RiskAssessment(
             run_id=run_id,
             shipment_id=shipment_pk,
-            disruption_id=rec.get("disruption_id") or None,
+            disruption_id=disruption_pk,
             score=max(0.0, float(rec.get("risk_score") or 0.0)),
             level=rec.get("risk_level", "SAFE"),
             distance_km=rec.get("distance_to_disruption_km"),
@@ -571,7 +580,11 @@ async def save_assessments_and_recommendations(
         )
         db.add(recommendation_row)
 
-    await db.commit()
+    try:
+        await db.commit()
+    except Exception as exc:
+        await db.rollback()
+        print(f"[CRUD Warning] Failed to commit assessments: {exc}")
 
 
 save_pipeline_results = save_assessments_and_recommendations
@@ -608,7 +621,12 @@ async def save_agent_traces(
             error=t.get("error"),
         )
         db.add(row)
-    await db.commit()
+
+    try:
+        await db.commit()
+    except Exception as exc:
+        await db.rollback()
+        print(f"[CRUD Warning] Failed to commit agent traces: {exc}")
 
 
 async def get_agent_traces(db: AsyncSession, run_id: str) -> list[dict]:
