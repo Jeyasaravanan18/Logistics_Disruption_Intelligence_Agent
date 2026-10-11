@@ -1,19 +1,21 @@
 version: "3.9"
 
 services:
-  # ── MongoDB Database
-  mongodb:
-    image: mongo:7.0
+  # ── PostgreSQL Relational Database
+  postgres:
+    image: postgres:16-alpine
     restart: always
     environment:
-      MONGO_INITDB_DATABASE: logistics
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: logistics
     volumes:
-      - mongodb_data:/data/db
+      - postgres_data:/var/lib/postgresql/data
     ports:
-      - "27017:27017"
+      - "5432:5432"
     healthcheck:
-      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
-      interval: 10s
+      test: ["CMD-SHELL", "pg_isready -U postgres -d logistics"]
+      interval: 5s
       timeout: 5s
       retries: 5
 
@@ -38,15 +40,14 @@ services:
     ports:
       - "8000:8000"
     environment:
-      MONGODB_URL: mongodb://mongodb:27017
-      MONGODB_DB_NAME: logistics
+      DATABASE_URL: postgresql+asyncpg://postgres:${POSTGRES_PASSWORD:-postgres}@postgres:5432/logistics
       REDIS_URL: redis://redis:6379/0
       JWT_SECRET_KEY: ${JWT_SECRET_KEY:-09d25e094faa6ca2556c818166b7a9563b93f7099f6f0f4caa6cf63b88e8d3e7}
       OPENWEATHER_API_KEY: ${OPENWEATHER_API_KEY}
       GNEWS_API_KEY: ${GNEWS_API_KEY}
       GEMINI_API_KEY: ${GEMINI_API_KEY}
     depends_on:
-      mongodb:
+      postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
@@ -59,15 +60,14 @@ services:
       dockerfile: Dockerfile
     restart: always
     environment:
-      MONGODB_URL: mongodb://mongodb:27017
-      MONGODB_DB_NAME: logistics
+      DATABASE_URL: postgresql+asyncpg://postgres:${POSTGRES_PASSWORD:-postgres}@postgres:5432/logistics
       REDIS_URL: redis://redis:6379/0
       JWT_SECRET_KEY: ${JWT_SECRET_KEY:-09d25e094faa6ca2556c818166b7a9563b93f7099f6f0f4caa6cf63b88e8d3e7}
       OPENWEATHER_API_KEY: ${OPENWEATHER_API_KEY}
       GNEWS_API_KEY: ${GNEWS_API_KEY}
       GEMINI_API_KEY: ${GEMINI_API_KEY}
     depends_on:
-      mongodb:
+      postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
@@ -80,15 +80,14 @@ services:
       dockerfile: Dockerfile
     restart: always
     environment:
-      MONGODB_URL: mongodb://mongodb:27017
-      MONGODB_DB_NAME: logistics
+      DATABASE_URL: postgresql+asyncpg://postgres:${POSTGRES_PASSWORD:-postgres}@postgres:5432/logistics
       REDIS_URL: redis://redis:6379/0
       JWT_SECRET_KEY: ${JWT_SECRET_KEY:-09d25e094faa6ca2556c818166b7a9563b93f7099f6f0f4caa6cf63b88e8d3e7}
       OPENWEATHER_API_KEY: ${OPENWEATHER_API_KEY}
       GNEWS_API_KEY: ${GNEWS_API_KEY}
       GEMINI_API_KEY: ${GEMINI_API_KEY}
     depends_on:
-      mongodb:
+      postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
@@ -108,5 +107,4 @@ services:
       - api
 
 volumes:
-  mongodb_data:
-
+  postgres_data:

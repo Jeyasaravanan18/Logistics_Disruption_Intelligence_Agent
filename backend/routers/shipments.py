@@ -1,9 +1,14 @@
+"""
+Shipments router: list, create, update, delete, seed demo.
+Backed by PostgreSQL/SQLite via SQLAlchemy 2.0 AsyncSession.
+"""
+
 from fastapi import APIRouter, Depends, HTTPException, status
-from motor.motor_asyncio import AsyncIOMotorDatabase
+from sqlalchemy.ext.asyncio import AsyncSession
 
 import crud
 import schemas
-from database import get_database
+from database import get_db
 from routers.auth import get_current_user, owner_id_from_user
 
 router = APIRouter()
@@ -17,7 +22,7 @@ def _public_shipment(doc: dict) -> dict:
 async def list_shipments(
     skip: int = 0,
     limit: int = 100,
-    db: AsyncIOMotorDatabase = Depends(get_database),
+    db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
     limit = min(max(limit, 1), 200)
@@ -28,7 +33,7 @@ async def list_shipments(
 @router.post("/shipments", response_model=schemas.ShipmentOut, status_code=201)
 async def create_shipment(
     payload: schemas.ShipmentCreate,
-    db: AsyncIOMotorDatabase = Depends(get_database),
+    db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
     try:
@@ -44,7 +49,7 @@ async def create_shipment(
 async def update_shipment(
     shipment_id: str,
     payload: schemas.ShipmentUpdate,
-    db: AsyncIOMotorDatabase = Depends(get_database),
+    db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
     updated = await crud.update_shipment(
@@ -61,7 +66,7 @@ async def update_shipment(
 @router.delete("/shipments/{shipment_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_shipment(
     shipment_id: str,
-    db: AsyncIOMotorDatabase = Depends(get_database),
+    db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
     deleted = await crud.delete_shipment(db, owner_id_from_user(current_user), shipment_id)
@@ -71,7 +76,7 @@ async def delete_shipment(
 
 @router.post("/shipments/seed-demo", response_model=schemas.ShipmentListResponse)
 async def seed_demo(
-    db: AsyncIOMotorDatabase = Depends(get_database),
+    db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
     await crud.seed_demo_shipments(db, owner_id_from_user(current_user), force=True)

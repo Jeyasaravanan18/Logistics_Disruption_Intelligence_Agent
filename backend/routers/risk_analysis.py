@@ -1,20 +1,25 @@
+"""
+Risk analysis router: execute 4-agent pipeline or retrieve cached risk matrix.
+Uses SQLAlchemy 2.0 AsyncSession for shipment retrieval and Redis for caching and pub/sub.
+"""
+
 import json
 import os
 import time
 
 from fastapi import APIRouter, Depends
-from motor.motor_asyncio import AsyncIOMotorDatabase
 import redis
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from database import get_database
+import crud
+from database import get_db
 from pipeline import run_pipeline
 from routers.auth import get_current_user, owner_id_from_user
-import crud
 
 router = APIRouter()
 REDIS_URL = os.getenv("REDIS_URL", "redis://127.0.0.1:6379/0")
 
-# In-memory cache fallback when Redis is offline (prevents proxy timeouts)
+# In-memory cache fallback when Redis is offline
 _MEM_CACHE: dict[str, tuple[float, dict]] = {}
 CACHE_TTL = 120.0  # 2 minutes cache
 
@@ -29,7 +34,7 @@ def _redis():
 
 @router.get("/risk-analysis")
 async def get_risk_analysis(
-    db: AsyncIOMotorDatabase = Depends(get_database),
+    db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
     owner_id = owner_id_from_user(current_user)
@@ -58,7 +63,7 @@ async def get_risk_analysis(
 
 @router.post("/risk-analysis/run")
 async def run_risk_analysis(
-    db: AsyncIOMotorDatabase = Depends(get_database),
+    db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
     owner_id = owner_id_from_user(current_user)
@@ -75,4 +80,3 @@ async def run_risk_analysis(
     except Exception:
         pass
     return result
-

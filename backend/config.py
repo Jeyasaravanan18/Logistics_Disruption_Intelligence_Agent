@@ -16,10 +16,8 @@ JWT_ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "30"))
 REFRESH_TOKEN_EXPIRE_DAYS = int(os.getenv("REFRESH_TOKEN_EXPIRE_DAYS", "7"))
 
-MONGODB_URL = os.getenv("MONGODB_URL", "mongodb://127.0.0.1:27017")
-if "localhost" in MONGODB_URL:
-    MONGODB_URL = MONGODB_URL.replace("localhost", "127.0.0.1")
-MONGODB_DB_NAME = os.getenv("MONGODB_DB_NAME", "logistics")
+DATABASE_URL = os.getenv("DATABASE_URL") or os.getenv("POSTGRES_URL") or "postgresql+asyncpg://postgres:postgres@127.0.0.1:5432/logistics"
+SQLITE_FALLBACK_URL = os.getenv("SQLITE_FALLBACK_URL", "sqlite+aiosqlite:///./logistics.db")
 
 REDIS_URL = os.getenv("REDIS_URL", "redis://127.0.0.1:6379/0")
 

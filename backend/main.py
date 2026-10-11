@@ -1,42 +1,35 @@
-import json
+"""
+FastAPI ASGI application entry point.
+Lifespan manages SQLAlchemy 2.0 connection pool and relational migrations.
+"""
+
 from contextlib import asynccontextmanager
+import json
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from jose import JWTError
 import redis.asyncio as aioredis
+from sqlalchemy import text
 
 from config import ALLOWED_ORIGINS, COOKIE_ACCESS_NAME, IS_PRODUCTION, REDIS_URL
-from database import close_db, connect_db, get_database
+from database import close_db, get_active_url, get_engine, get_sessionmaker, init_db
 from routers import auth, disruptions, risk_analysis, shipments
 from routers.auth import get_user_from_token
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    await connect_db()
-    db = get_database()
-    try:
-        await db.users.create_index("email", unique=True)
-        try:
-            await db.shipments.drop_index("shipment_id_1")
-        except Exception:
-            pass
-        await db.shipments.create_index(
-            [("owner_id", 1), ("shipment_id", 1)], unique=True, name="owner_shipment_unique"
-        )
-        await db.refresh_tokens.create_index("token_hash", unique=True)
-        await db.refresh_tokens.create_index("expires_at", expireAfterSeconds=0)
-    except Exception as exc:
-        print(f"[MongoDB] Index setup notice: {exc}")
+    """Application lifespan context: initialize database tables and teardown cleanly."""
+    await init_db()
     yield
     await close_db()
 
 
 app = FastAPI(
     title="Logistics Disruption Intelligence Agent API",
-    description="Multi-tenant disruption intelligence API",
+    description="Multi-tenant disruption intelligence API with PostgreSQL, SQLAlchemy 2.0 & Redis",
     version="3.0.0",
     lifespan=lifespan,
     docs_url=None if IS_PRODUCTION else "/docs",
@@ -59,14 +52,20 @@ app.include_router(risk_analysis.router, tags=["Risk Analysis"])
 
 @app.websocket("/ws/risk-updates")
 async def websocket_endpoint(websocket: WebSocket):
+    """
+    WebSocket endpoint broadcasting real-time risk updates.
+    Closes cleanly with status 4503 if Redis broker is unavailable.
+    """
     token = websocket.query_params.get("token") or websocket.cookies.get(COOKIE_ACCESS_NAME)
     if not token:
         await websocket.close(code=4401)
         return
 
+    session_factory = get_sessionmaker()
     try:
-        user = await get_user_from_token(token, get_database())
-    except JWTError:
+        async with session_factory() as db:
+            user = await get_user_from_token(token, db)
+    except (JWTError, Exception):
         await websocket.close(code=4401)
         return
 
@@ -88,11 +87,11 @@ async def websocket_endpoint(websocket: WebSocket):
     except WebSocketDisconnect:
         pass
     except Exception as exc:
-        print(f"[WebSocket] Redis unavailable, keeping socket idle: {exc}")
+        print(f"[WebSocket] Redis pubsub error: {exc}")
+        # Close with 1011 / 4503 Service Unavailable rather than idling forever
         try:
-            while True:
-                await websocket.receive_text()
-        except WebSocketDisconnect:
+            await websocket.close(code=1011)
+        except Exception:
             pass
     finally:
         if pubsub:
@@ -109,9 +108,11 @@ async def websocket_endpoint(websocket: WebSocket):
 
 @app.get("/", tags=["Health"])
 async def root():
+    """Service metadata endpoint."""
     return {
         "status": "online",
-        "database": "MongoDB",
+        "database": "PostgreSQL (SQLAlchemy 2.0 with SQLite fallback)",
+        "active_db": get_active_url(),
         "version": "3.0.0",
         "endpoints": ["/health", "/auth/login", "/shipments", "/disruptions", "/risk-analysis"],
     }
@@ -119,13 +120,19 @@ async def root():
 
 @app.get("/health", tags=["Health"])
 async def health():
-    checks = {"api": "ok", "mongodb": "down", "redis": "down"}
-    try:
-        await get_database().command("ping")
-        checks["mongodb"] = "ok"
-    except Exception as exc:
-        checks["mongodb"] = str(exc)
+    """Healthcheck endpoint probing SQL database and Redis broker."""
+    checks = {"api": "ok", "database": "down", "redis": "down"}
 
+    # Probe SQL engine
+    try:
+        engine = get_engine()
+        async with engine.connect() as conn:
+            await conn.execute(text("SELECT 1"))
+        checks["database"] = "ok"
+    except Exception as exc:
+        checks["database"] = str(exc)
+
+    # Probe Redis broker
     try:
         client = aioredis.from_url(REDIS_URL, decode_responses=True)
         pong = await client.ping()
@@ -134,7 +141,7 @@ async def health():
     except Exception as exc:
         checks["redis"] = str(exc)
 
-    healthy = checks["mongodb"] == "ok"
+    healthy = checks["database"] == "ok"
     payload = {
         "status": "healthy" if healthy else "degraded",
         "checks": checks,

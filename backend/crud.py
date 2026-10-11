@@ -1,80 +1,180 @@
+"""
+Database CRUD and analytical queries using Async SQLAlchemy 2.0.
+Replaces legacy NoSQL operations with typed, relational operations.
+"""
+
+from __future__ import annotations
+
 import json
 import os
 from datetime import datetime, timezone
+from typing import Any, Optional
 
-from motor.motor_asyncio import AsyncIOMotorDatabase
-from pymongo import ReturnDocument
+from sqlalchemy import delete, desc, distinct, func, select, update
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from security import hash_token, utcnow
+from models import (
+    AgentTrace,
+    Disruption,
+    PipelineRun,
+    Recommendation,
+    RefreshToken,
+    RiskAssessment,
+    Shipment,
+    User,
+    utcnow,
+)
+from security import hash_token
 
 
-def _owner_filter(owner_id: str) -> dict:
-    return {"owner_id": owner_id}
+def _shipment_to_dict(s: Shipment) -> dict:
+    """Serialize a Shipment ORM instance to a dictionary."""
+    return {
+        "shipment_id": s.shipment_id,
+        "origin": s.origin,
+        "destination": s.destination,
+        "route_highway": s.route_highway,
+        "latitude": s.latitude,
+        "longitude": s.longitude,
+        "delivery_priority": s.delivery_priority,
+        "estimated_delivery_time": s.estimated_delivery_time,
+        "cargo_type": s.cargo_type,
+        "weight_kg": s.weight_kg,
+        "status": s.status,
+    }
+
+
+def _user_to_dict(u: User) -> dict:
+    """Serialize a User ORM instance to a dictionary."""
+    return {
+        "id": u.id,
+        "email": u.email,
+        "name": u.name,
+        "hashed_password": u.hashed_password,
+        "created_at": u.created_at,
+    }
+
+
+# ============================================================================
+# Shipments CRUD
+# ============================================================================
 
 
 async def get_shipments(
-    db: AsyncIOMotorDatabase,
+    db: AsyncSession,
     owner_id: str,
     skip: int = 0,
     limit: int = 100,
 ) -> list[dict]:
-    cursor = (
-        db.shipments.find(_owner_filter(owner_id), {"_id": 0})
-        .skip(skip)
+    """Retrieve paginated shipments belonging to the given owner."""
+    stmt = (
+        select(Shipment)
+        .where(Shipment.owner_id == owner_id)
+        .order_by(Shipment.shipment_id.asc())
+        .offset(skip)
         .limit(limit)
     )
-    return await cursor.to_list(length=limit)
+    result = await db.execute(stmt)
+    return [_shipment_to_dict(s) for s in result.scalars().all()]
 
 
 async def get_shipment_by_id(
-    db: AsyncIOMotorDatabase, owner_id: str, shipment_id: str
+    db: AsyncSession, owner_id: str, shipment_id: str
 ) -> dict | None:
-    return await db.shipments.find_one(
-        {"owner_id": owner_id, "shipment_id": shipment_id}, {"_id": 0}
+    """Retrieve a single shipment by shipment_id and owner_id."""
+    stmt = select(Shipment).where(
+        Shipment.owner_id == owner_id, Shipment.shipment_id == shipment_id
     )
+    result = await db.execute(stmt)
+    shipment = result.scalar_one_or_none()
+    return _shipment_to_dict(shipment) if shipment else None
 
 
 async def create_shipment(
-    db: AsyncIOMotorDatabase, owner_id: str, shipment_data: dict
+    db: AsyncSession, owner_id: str, shipment_data: dict
 ) -> dict:
+    """Create a new shipment record under the specified owner."""
     existing = await get_shipment_by_id(db, owner_id, shipment_data["shipment_id"])
     if existing:
         raise ValueError("Shipment ID already exists")
-    doc = {**shipment_data, "owner_id": owner_id, "updated_at": utcnow()}
-    await db.shipments.insert_one(doc)
-    doc.pop("_id", None)
-    return doc
+
+    shipment = Shipment(
+        owner_id=owner_id,
+        shipment_id=shipment_data["shipment_id"],
+        origin=shipment_data["origin"],
+        destination=shipment_data["destination"],
+        route_highway=shipment_data["route_highway"],
+        latitude=shipment_data["latitude"],
+        longitude=shipment_data["longitude"],
+        delivery_priority=shipment_data["delivery_priority"],
+        estimated_delivery_time=shipment_data.get("estimated_delivery_time"),
+        cargo_type=shipment_data.get("cargo_type"),
+        weight_kg=shipment_data.get("weight_kg"),
+        status=shipment_data.get("status", "IN_TRANSIT"),
+    )
+    db.add(shipment)
+    await db.commit()
+    await db.refresh(shipment)
+    return _shipment_to_dict(shipment)
 
 
 async def update_shipment(
-    db: AsyncIOMotorDatabase, owner_id: str, shipment_id: str, updates: dict
+    db: AsyncSession, owner_id: str, shipment_id: str, updates: dict
 ) -> dict | None:
-    updates = {k: v for k, v in updates.items() if v is not None}
-    updates["updated_at"] = utcnow()
-    result = await db.shipments.find_one_and_update(
-        {"owner_id": owner_id, "shipment_id": shipment_id},
-        {"$set": updates},
-        return_document=ReturnDocument.AFTER,
-        projection={"_id": 0},
+    """Update non-null fields on a shipment and return the updated dictionary."""
+    clean_updates = {k: v for k, v in updates.items() if v is not None}
+    if not clean_updates:
+        return await get_shipment_by_id(db, owner_id, shipment_id)
+
+    clean_updates["updated_at"] = utcnow()
+
+    stmt = (
+        update(Shipment)
+        .where(Shipment.owner_id == owner_id, Shipment.shipment_id == shipment_id)
+        .values(**clean_updates)
     )
-    return result
+    result = await db.execute(stmt)
+    if result.rowcount == 0:
+        return None
+    await db.commit()
+    return await get_shipment_by_id(db, owner_id, shipment_id)
 
 
-async def delete_shipment(db: AsyncIOMotorDatabase, owner_id: str, shipment_id: str) -> bool:
-    result = await db.shipments.delete_one({"owner_id": owner_id, "shipment_id": shipment_id})
-    return result.deleted_count == 1
+async def delete_shipment(
+    db: AsyncSession, owner_id: str, shipment_id: str
+) -> bool:
+    """Delete a shipment record by shipment_id and owner_id."""
+    stmt = delete(Shipment).where(
+        Shipment.owner_id == owner_id, Shipment.shipment_id == shipment_id
+    )
+    result = await db.execute(stmt)
+    await db.commit()
+    return result.rowcount > 0
 
 
-async def list_owner_ids(db: AsyncIOMotorDatabase) -> list[str]:
-    return [oid for oid in await db.shipments.distinct("owner_id") if oid]
+async def list_owner_ids(db: AsyncSession) -> list[str]:
+    """List distinct user owner IDs that have registered shipments."""
+    stmt = select(distinct(Shipment.owner_id)).where(Shipment.owner_id.is_not(None))
+    result = await db.execute(stmt)
+    return [str(row[0]) for row in result.all() if row[0]]
 
 
-async def seed_demo_shipments(db: AsyncIOMotorDatabase, owner_id: str, force: bool = False) -> int:
-    count = await db.shipments.count_documents(_owner_filter(owner_id))
+async def seed_demo_shipments(
+    db: AsyncSession, owner_id: str, force: bool = False
+) -> int:
+    """
+    Seed initial Indian freight shipments from shipments.json into SQL for a user.
+    Uses shipments.json strictly as seed data input.
+    """
+    stmt = select(func.count()).select_from(Shipment).where(Shipment.owner_id == owner_id)
+    count = (await db.execute(stmt)).scalar() or 0
     if count > 0 and not force:
         return 0
+
     if force:
-        await db.shipments.delete_many(_owner_filter(owner_id))
+        await db.execute(delete(Shipment).where(Shipment.owner_id == owner_id))
+        await db.commit()
 
     json_path = os.path.join(os.path.dirname(__file__), "data", "shipments.json")
     if not os.path.exists(json_path):
@@ -84,92 +184,379 @@ async def seed_demo_shipments(db: AsyncIOMotorDatabase, owner_id: str, force: bo
         data = json.load(f)
 
     now = utcnow()
-    docs = []
+    records = []
     for item in data:
-        row = dict(item)
-        edt = row.get("estimated_delivery_time")
+        edt = item.get("estimated_delivery_time")
+        parsed_edt = None
         if edt:
             try:
-                row["estimated_delivery_time"] = datetime.fromisoformat(str(edt))
+                parsed_edt = datetime.fromisoformat(str(edt))
+                if parsed_edt.tzinfo is None:
+                    parsed_edt = parsed_edt.replace(tzinfo=timezone.utc)
             except Exception:
                 pass
-        row["owner_id"] = owner_id
-        row["updated_at"] = now
-        docs.append(row)
 
-    if docs:
-        await db.shipments.insert_many(docs)
-    return len(docs)
+        records.append(
+            Shipment(
+                owner_id=owner_id,
+                shipment_id=item["shipment_id"],
+                origin=item["origin"],
+                destination=item["destination"],
+                route_highway=item["route_highway"],
+                latitude=float(item["latitude"]),
+                longitude=float(item["longitude"]),
+                delivery_priority=item["delivery_priority"],
+                estimated_delivery_time=parsed_edt,
+                cargo_type=item.get("cargo_type"),
+                weight_kg=item.get("weight_kg"),
+                status="IN_TRANSIT",
+                created_at=now,
+                updated_at=now,
+            )
+        )
 
-
-async def get_user_by_email(db: AsyncIOMotorDatabase, email: str) -> dict | None:
-    user = await db.users.find_one({"email": email.lower().strip()})
-    if user and "_id" in user:
-        user["id"] = str(user["_id"])
-    return user
-
-
-async def get_user_by_id(db: AsyncIOMotorDatabase, user_id: str) -> dict | None:
-    from bson import ObjectId
-
-    try:
-        oid = ObjectId(user_id)
-    except Exception:
-        return None
-    user = await db.users.find_one({"_id": oid})
-    if user:
-        user["id"] = str(user["_id"])
-    return user
+    if records:
+        db.add_all(records)
+        await db.commit()
+    return len(records)
 
 
-async def create_user(db: AsyncIOMotorDatabase, user_doc: dict) -> dict:
-    user_doc["email"] = user_doc["email"].lower().strip()
-    result = await db.users.insert_one(user_doc)
-    user_doc["id"] = str(result.inserted_id)
-    return user_doc
+# ============================================================================
+# Users & Authentication CRUD
+# ============================================================================
 
 
-async def update_user_password(db: AsyncIOMotorDatabase, user_id: str, hashed_password: str) -> None:
-    from bson import ObjectId
+async def get_user_by_email(db: AsyncSession, email: str) -> dict | None:
+    """Retrieve user dictionary by case-insensitive email."""
+    stmt = select(User).where(func.lower(User.email) == email.lower().strip())
+    result = await db.execute(stmt)
+    user = result.scalar_one_or_none()
+    return _user_to_dict(user) if user else None
 
-    await db.users.update_one(
-        {"_id": ObjectId(user_id)},
-        {"$set": {"hashed_password": hashed_password, "updated_at": utcnow()}},
+
+async def get_user_by_id(db: AsyncSession, user_id: str) -> dict | None:
+    """Retrieve user dictionary by primary key UUID."""
+    stmt = select(User).where(User.id == user_id)
+    result = await db.execute(stmt)
+    user = result.scalar_one_or_none()
+    return _user_to_dict(user) if user else None
+
+
+async def create_user(db: AsyncSession, user_doc: dict) -> dict:
+    """Insert a new user record into the users table."""
+    user = User(
+        email=user_doc["email"].lower().strip(),
+        name=user_doc["name"].strip(),
+        hashed_password=user_doc["hashed_password"],
+        created_at=utcnow(),
     )
+    db.add(user)
+    await db.commit()
+    await db.refresh(user)
+    return _user_to_dict(user)
 
 
-async def store_refresh_token(db: AsyncIOMotorDatabase, user_id: str, raw_token: str, expires_at: datetime) -> None:
-    await db.refresh_tokens.insert_one(
+async def update_user_password(
+    db: AsyncSession, user_id: str, hashed_password: str
+) -> None:
+    """Update password hash for the specified user ID."""
+    stmt = (
+        update(User)
+        .where(User.id == user_id)
+        .values(hashed_password=hashed_password)
+    )
+    await db.execute(stmt)
+    await db.commit()
+
+
+async def store_refresh_token(
+    db: AsyncSession, user_id: str, raw_token: str, expires_at: datetime
+) -> None:
+    """Store hashed refresh token for session tracking."""
+    token = RefreshToken(
+        user_id=user_id,
+        token_hash=hash_token(raw_token),
+        expires_at=expires_at,
+        created_at=utcnow(),
+        revoked=False,
+    )
+    db.add(token)
+    await db.commit()
+
+
+async def get_valid_refresh(db: AsyncSession, raw_token: str) -> dict | None:
+    """Check and retrieve an active, unrevoked, unexpired refresh token."""
+    h = hash_token(raw_token)
+    stmt = select(RefreshToken).where(
+        RefreshToken.token_hash == h,
+        RefreshToken.revoked.is_(False),
+        RefreshToken.expires_at > utcnow(),
+    )
+    result = await db.execute(stmt)
+    token = result.scalar_one_or_none()
+    if not token:
+        return None
+    return {
+        "id": token.id,
+        "user_id": token.user_id,
+        "expires_at": token.expires_at,
+    }
+
+
+async def revoke_refresh_token(db: AsyncSession, raw_token: str) -> None:
+    """Revoke a single refresh token by raw token value."""
+    h = hash_token(raw_token)
+    stmt = (
+        update(RefreshToken)
+        .where(RefreshToken.token_hash == h)
+        .values(revoked=True)
+    )
+    await db.execute(stmt)
+    await db.commit()
+
+
+async def revoke_user_refresh_tokens(db: AsyncSession, user_id: str) -> None:
+    """Revoke all active refresh tokens for the given user ID (logout all)."""
+    stmt = (
+        update(RefreshToken)
+        .where(RefreshToken.user_id == user_id)
+        .values(revoked=True)
+    )
+    await db.execute(stmt)
+    await db.commit()
+
+
+# ============================================================================
+# Disruptions & Deduplication Persistence
+# ============================================================================
+
+
+async def upsert_disruptions(db: AsyncSession, disruptions_data: list[dict]) -> list[dict]:
+    """
+    Persist collected disruption records in SQL, deduplicating by unique content_hash.
+    Returns the list of active disruptions.
+    """
+    if not disruptions_data:
+        return []
+
+    saved_items = []
+    now = utcnow()
+
+    for d in disruptions_data:
+        # Generate stable content hash if not already present
+        content_hash = d.get("content_hash")
+        if not content_hash:
+            import hashlib
+            hash_str = f"{d.get('type')}:{d.get('subtype')}:{d.get('location')}:{d.get('lat')}:{d.get('lon')}:{d.get('description', '')[:50]}"
+            content_hash = hashlib.sha256(hash_str.encode("utf-8")).hexdigest()
+            d["content_hash"] = content_hash
+
+        # Check if already exists in DB
+        stmt = select(Disruption).where(Disruption.content_hash == content_hash)
+        existing = (await db.execute(stmt)).scalar_one_or_none()
+
+        if existing:
+            saved_items.append(d)
+            continue
+
+        disruption_row = Disruption(
+            id=d.get("id") or str(d.get("content_hash")[:16]),
+            type=d.get("type", "unknown"),
+            source=d.get("source", "Live"),
+            title=d.get("description", "") or d.get("subtype", "Disruption"),
+            subtype=d.get("subtype", "Incident"),
+            location=d.get("location", "Unknown"),
+            lat=float(d.get("lat") or d.get("latitude") or 0.0),
+            lon=float(d.get("lon") or d.get("longitude") or 0.0),
+            radius_km=float(d.get("radius_km") or 150.0),
+            severity=d.get("severity", "LOW"),
+            valid_from=now,
+            raw_json=d,
+            content_hash=content_hash,
+            created_at=now,
+        )
+        db.add(disruption_row)
+        saved_items.append(d)
+
+    await db.commit()
+    return saved_items
+
+
+async def get_active_disruptions(db: AsyncSession, limit: int = 100) -> list[dict]:
+    """Retrieve active disruption records stored in SQL."""
+    stmt = select(Disruption).order_by(desc(Disruption.created_at)).limit(limit)
+    result = await db.execute(stmt)
+    records = []
+    for d in result.scalars().all():
+        item = d.raw_json or {}
+        item.update({
+            "id": d.id,
+            "type": d.type,
+            "subtype": d.subtype,
+            "location": d.location,
+            "severity": d.severity,
+            "description": d.title,
+            "lat": d.lat,
+            "lon": d.lon,
+            "latitude": d.lat,
+            "longitude": d.lon,
+            "radius_km": d.radius_km,
+            "source": d.source,
+            "content_hash": d.content_hash,
+        })
+        records.append(item)
+    return records
+
+
+# ============================================================================
+# Pipeline Runs, Risk Assessments & Agent Traces
+# ============================================================================
+
+
+async def create_pipeline_run(db: AsyncSession, owner_id: str) -> PipelineRun:
+    """Create a new PipelineRun record in RUNNING status."""
+    run = PipelineRun(
+        owner_id=owner_id,
+        started_at=utcnow(),
+        status="RUNNING",
+    )
+    db.add(run)
+    await db.commit()
+    await db.refresh(run)
+    return run
+
+
+async def finish_pipeline_run(
+    db: AsyncSession,
+    run_id: str,
+    counts: dict,
+    reasoning: str = "",
+    status: str = "COMPLETED",
+) -> None:
+    """Close out a pipeline run record with summary statistics."""
+    stmt = (
+        update(PipelineRun)
+        .where(PipelineRun.id == run_id)
+        .values(
+            finished_at=utcnow(),
+            status=status,
+            disruptions_collected=counts.get("disruptions_collected", 0),
+            shipments_evaluated=counts.get("shipments_evaluated", 0),
+            high_risk_count=counts.get("risk_breakdown", {}).get("HIGH", 0),
+            medium_risk_count=counts.get("risk_breakdown", {}).get("MEDIUM", 0),
+            low_risk_count=counts.get("risk_breakdown", {}).get("LOW", 0),
+            safe_count=counts.get("risk_breakdown", {}).get("SAFE", 0),
+            collector_reasoning=reasoning,
+        )
+    )
+    await db.execute(stmt)
+    await db.commit()
+
+
+async def get_pipeline_run(db: AsyncSession, run_id: str) -> PipelineRun | None:
+    """Retrieve PipelineRun by ID."""
+    stmt = select(PipelineRun).where(PipelineRun.id == run_id)
+    return (await db.execute(stmt)).scalar_one_or_none()
+
+
+async def get_latest_pipeline_run(db: AsyncSession, owner_id: str) -> PipelineRun | None:
+    """Retrieve the most recent completed pipeline run for the given owner."""
+    stmt = (
+        select(PipelineRun)
+        .where(PipelineRun.owner_id == owner_id, PipelineRun.status == "COMPLETED")
+        .order_by(desc(PipelineRun.started_at))
+        .limit(1)
+    )
+    return (await db.execute(stmt)).scalar_one_or_none()
+
+
+async def save_assessments_and_recommendations(
+    db: AsyncSession,
+    run_id: str,
+    recommendations: list[dict],
+) -> None:
+    """Persist risk assessments and corresponding recommendations into SQL."""
+    for rec in recommendations:
+        sid = rec.get("shipment_id")
+        if not sid:
+            continue
+
+        # Look up shipment row by shipment_id
+        stmt = select(Shipment.id).where(Shipment.shipment_id == sid).limit(1)
+        shipment_pk = (await db.execute(stmt)).scalar_one_or_none()
+        if not shipment_pk:
+            continue
+
+        assessment = RiskAssessment(
+            run_id=run_id,
+            shipment_id=shipment_pk,
+            disruption_id=rec.get("disruption_id") or None,
+            score=max(0.0, float(rec.get("risk_score") or 0.0)),
+            level=rec.get("risk_level", "SAFE"),
+            distance_km=rec.get("distance_to_disruption_km"),
+            reason=rec.get("reason", "No disruption detected."),
+            impact_duration_hours=int(rec.get("impact_duration_hours") or 0),
+        )
+        db.add(assessment)
+        await db.flush()
+
+        recommendation_row = Recommendation(
+            assessment_id=assessment.id,
+            action=rec.get("suggested_action", "Continue route"),
+            alternate_route=rec.get("alternate_route"),
+            estimated_delay_hours=int(rec.get("estimated_delay_hours") or 0),
+            customer_message=rec.get("customer_message", "On schedule"),
+            rationale=rec.get("reason"),
+            source="llm" if "gemini" in str(rec.get("recommendation_by", "")) else "rules",
+        )
+        db.add(recommendation_row)
+
+    await db.commit()
+
+
+async def save_agent_traces(
+    db: AsyncSession,
+    run_id: str,
+    traces: list[dict],
+) -> None:
+    """Persist per-node workflow execution traces for observable telemetry."""
+    for t in traces:
+        row = AgentTrace(
+            run_id=run_id,
+            node=t.get("node", "unknown"),
+            started_at=t.get("started_at", utcnow()),
+            duration_ms=float(t.get("duration_ms", 0.0)),
+            input_hash=t.get("input_hash"),
+            output_summary=t.get("output_summary"),
+            used_llm=bool(t.get("used_llm", False)),
+            fallback_used=bool(t.get("fallback_used", False)),
+            tokens_estimate=int(t.get("tokens_estimate", 0)),
+            error=t.get("error"),
+        )
+        db.add(row)
+    await db.commit()
+
+
+async def get_agent_traces(db: AsyncSession, run_id: str) -> list[dict]:
+    """Retrieve all execution traces for a given pipeline run."""
+    stmt = (
+        select(AgentTrace)
+        .where(AgentTrace.run_id == run_id)
+        .order_by(AgentTrace.started_at.asc())
+    )
+    result = await db.execute(stmt)
+    return [
         {
-            "user_id": user_id,
-            "token_hash": hash_token(raw_token),
-            "expires_at": expires_at,
-            "created_at": utcnow(),
-            "revoked": False,
+            "id": r.id,
+            "node": r.node,
+            "started_at": r.started_at.isoformat(),
+            "duration_ms": r.duration_ms,
+            "input_hash": r.input_hash,
+            "output_summary": r.output_summary,
+            "used_llm": r.used_llm,
+            "fallback_used": r.fallback_used,
+            "tokens_estimate": r.tokens_estimate,
+            "error": r.error,
         }
-    )
-
-
-async def get_valid_refresh(db: AsyncIOMotorDatabase, raw_token: str) -> dict | None:
-    doc = await db.refresh_tokens.find_one(
-        {"token_hash": hash_token(raw_token), "revoked": False}
-    )
-    if not doc:
-        return None
-    expires = doc.get("expires_at")
-    if expires and expires.tzinfo is None:
-        expires = expires.replace(tzinfo=timezone.utc)
-    if not expires or expires < utcnow():
-        return None
-    return doc
-
-
-async def revoke_refresh_token(db: AsyncIOMotorDatabase, raw_token: str) -> None:
-    await db.refresh_tokens.update_one(
-        {"token_hash": hash_token(raw_token)},
-        {"$set": {"revoked": True}},
-    )
-
-
-async def revoke_user_refresh_tokens(db: AsyncIOMotorDatabase, user_id: str) -> None:
-    await db.refresh_tokens.update_many({"user_id": user_id}, {"$set": {"revoked": True}})
+        for r in result.scalars().all()
+    ]

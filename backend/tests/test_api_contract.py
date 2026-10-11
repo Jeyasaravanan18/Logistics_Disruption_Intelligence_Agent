@@ -8,6 +8,10 @@ from unittest.mock import AsyncMock, patch
 import pytest
 import httpx
 
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+
+from database import get_db
+from models import Base
 from main import app
 from routers.auth import get_current_user
 
@@ -23,11 +27,25 @@ def mock_user():
 
 @pytest.fixture
 async def async_client(mock_user):
+    test_engine = create_async_engine("sqlite+aiosqlite:///:memory:", echo=False)
+    async with test_engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+    session_factory = async_sessionmaker(bind=test_engine, class_=AsyncSession, expire_on_commit=False)
+
+    async def override_get_db():
+        async with session_factory() as session:
+            yield session
+
     app.dependency_overrides[get_current_user] = lambda: mock_user
+    app.dependency_overrides[get_db] = override_get_db
+
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
         yield client
+
     app.dependency_overrides.clear()
+    await test_engine.dispose()
 
 
 @pytest.mark.anyio

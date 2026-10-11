@@ -1,9 +1,14 @@
+"""
+Authentication router: registration, login, token refresh, logout, profile.
+Uses SQLAlchemy 2.0 AsyncSession and secure JWT cookie tokens.
+"""
+
 from datetime import timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.security import OAuth2PasswordRequestForm
 from jose import JWTError
-from motor.motor_asyncio import AsyncIOMotorDatabase
+from sqlalchemy.ext.asyncio import AsyncSession
 
 import crud
 import schemas
@@ -14,7 +19,7 @@ from config import (
     COOKIE_SAMESITE,
     COOKIE_SECURE,
 )
-from database import get_database
+from database import get_db
 from security import (
     client_key,
     create_access_token,
@@ -59,7 +64,7 @@ def _clear_auth_cookies(response: Response) -> None:
 
 async def get_current_user(
     request: Request,
-    db: AsyncIOMotorDatabase = Depends(get_database),
+    db: AsyncSession = Depends(get_db),
 ) -> dict:
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
@@ -83,7 +88,7 @@ async def get_current_user(
     return user
 
 
-async def get_user_from_token(token: str, db: AsyncIOMotorDatabase) -> dict:
+async def get_user_from_token(token: str, db: AsyncSession) -> dict:
     payload = decode_token(token, expected_type="access")
     email = payload.get("sub")
     if not email:
@@ -102,7 +107,7 @@ def owner_id_from_user(user: dict) -> str:
 async def register(
     request: Request,
     user: schemas.UserCreate,
-    db: AsyncIOMotorDatabase = Depends(get_database),
+    db: AsyncSession = Depends(get_db),
 ):
     enforce_rate_limit(client_key(request, "register"), limit=60, window_seconds=60)
     existing = await crud.get_user_by_email(db, user.email)
@@ -125,7 +130,7 @@ async def login(
     request: Request,
     response: Response,
     form_data: OAuth2PasswordRequestForm = Depends(),
-    db: AsyncIOMotorDatabase = Depends(get_database),
+    db: AsyncSession = Depends(get_db),
 ):
     enforce_rate_limit(client_key(request, "login"), limit=120, window_seconds=60)
     user = await crud.get_user_by_email(db, form_data.username)
@@ -154,7 +159,7 @@ async def refresh_session(
     request: Request,
     response: Response,
     body: schemas.RefreshRequest | None = None,
-    db: AsyncIOMotorDatabase = Depends(get_database),
+    db: AsyncSession = Depends(get_db),
 ):
     raw = (body.refresh_token if body else None) or request.cookies.get(COOKIE_REFRESH_NAME)
     if not raw:
@@ -184,7 +189,7 @@ async def refresh_session(
 async def logout(
     request: Request,
     response: Response,
-    db: AsyncIOMotorDatabase = Depends(get_database),
+    db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
     raw = request.cookies.get(COOKIE_REFRESH_NAME)
@@ -199,7 +204,7 @@ async def logout(
 @router.post("/change-password")
 async def change_password(
     payload: schemas.ChangePasswordRequest,
-    db: AsyncIOMotorDatabase = Depends(get_database),
+    db: AsyncSession = Depends(get_db),
     current_user: dict = Depends(get_current_user),
 ):
     if not verify_password(payload.current_password, current_user.get("hashed_password", "")):
