@@ -8,7 +8,7 @@
 > 
 > Unlike traditional GPS trackers that merely show where a delayed truck is, my system ingests live multi-source signals—from OpenWeatherMap to real-time Google News RSS feeds—and feeds them through an autonomous 4-agent pipeline using Google Gemini. It projects entire transit corridors geospatially, assesses proximity risks within milliseconds, and provides actionable rerouting directives. 
 > 
-> I also engineered an interactive **What-If Route Simulator** with Leaflet.js, allowing dispatchers to visually preview alternate detour corridors and quantify saved hours before rerouting vehicles. The stack is built with **FastAPI, Async MongoDB (Motor), Next.js 14, WebSockets, and Leaflet**."*
+> I also engineered an interactive **What-If Route Simulator** with Leaflet.js, allowing dispatchers to visually preview alternate detour corridors and quantify saved hours before rerouting vehicles. The stack is built with **FastAPI, PostgreSQL 16 (SQLAlchemy 2.0 asyncpg), LangGraph, Redis, Next.js 14, WebSockets, and Leaflet**."*
 
 ---
 
@@ -45,7 +45,7 @@ Use this when the interviewer asks: **"Walk me through your most impactful proje
 ---
 
 ### [1:30 - 2:00] Business Impact & Technical Takeaways
-> *"The frontend is a responsive Next.js 14 application with WebSockets for real-time live-syncing, clean enterprise SaaS styling, and JWT multi-tenant authentication backed by MongoDB with compound indexing.
+> *"The frontend is a responsive Next.js 14 application with WebSockets for real-time live-syncing, clean enterprise SaaS styling, and JWT multi-tenant authentication backed by PostgreSQL 16 with composite indexing.
 > 
 > This project proved to me how agentic AI and robust distributed systems design must work hand-in-hand: AI provides contextual reasoning, while deterministic geospatial math and caching ensure sub-second reliability and zero downtime."*
 
@@ -53,17 +53,15 @@ Use this when the interviewer asks: **"Walk me through your most impactful proje
 
 ## 💼 3. Resume Bullet Points (Copy-Paste Ready)
 
-### For Full-Stack Software Engineer Roles:
-- **Architected and deployed an autonomous Logistics Disruption Intelligence platform** using FastAPI, Next.js 14, MongoDB (Motor), and WebSockets, reducing proactive freight rerouting decision time by 80%.
-- **Engineered a 4-Agent asynchronous pipeline** integrating Gemini LLM, OpenWeatherMap API, and Google News RSS parsing to continuously monitor 30+ freight corridors for environmental and physical bottlenecks.
-- **Implemented vector-based corridor projection algorithms** to calculate perpendicular distance to highway trajectories, eliminating false positives common to radial point checks.
-- **Developed an interactive What-If Route Simulator** in Leaflet.js with dynamic SVG waypoints, dual-corridor rendering, and a floating HUD calculating real-time delay mitigations.
-- **Built fault-tolerant resilience mechanisms** including a fast-break circuit breaker for LLM rate limits (HTTP 429) and an in-memory hash cache, slashing warm query response times from 14s to 2ms.
+### For Full-Stack / Backend / SQL Roles:
+- **Architected a real-time Logistics Disruption Intelligence platform** with FastAPI, async SQLAlchemy 2.0 (`asyncpg`), PostgreSQL 16, and Next.js 14, implementing JWT cookie rotation, WebSocket fail-fast status codes, and 51 automated pytest tests.
+- **Engineered complex analytical SQL queries** utilizing `LAG()` window functions, `FILTER` aggregates, keyset pagination, and multi-table joins, yielding **1.48x to 2.09x execution speedups** benchmarked with `EXPLAIN (ANALYZE)` on 20,000 synthetic rows.
+- **Built production resilience architecture** featuring a distributed 3-state Circuit Breaker (CLOSED/OPEN/HALF_OPEN) in Redis and an SHA-256 fingerprint cache, dropping warm endpoint latency from 14s to 2ms with recorded demo fixtures when external APIs are absent.
 
-### For AI / Machine Learning / Agentic Engineer Roles:
-- **Designed a multi-agent orchestration workflow** (Collector &rarr; Analyzer &rarr; Geospatial Evaluator &rarr; Directive Generator) utilizing Google Gemini 2.5/1.5 Flash with strict Pydantic JSON schemas.
-- **Created a deterministic heuristic fallback engine** ensuring high availability and zero operational disruption when external LLM APIs experience rate limits or network outages.
-- **Combined NLP entity extraction from live RSS feeds with geospatial coordinates** across 35+ logistics hubs to enrich unstructured news reports into actionable spatial disruption vectors.
+### For AI / Agentic Workflow Roles:
+- **Engineered a stateful LangGraph workflow** featuring dynamic tool selection, Pydantic validation error feedback, a bounded review loop ($N \le 2$), conditional recommendation bypass, and per-node observability traces persisted to relational SQL.
+- **Developed an automated evaluation harness (`/eval`)** benchmarking rule baselines against Gemini structured outputs across 30 hand-labeled disruption samples (achieving 100% type classification and 96.7% severity agreement) and 10 end-to-end scenarios (100% risk-level agreement).
+
 
 ---
 
@@ -96,10 +94,10 @@ Use this when the interviewer asks: **"Walk me through your most impactful proje
 
 ---
 
-### Q4: Why did you choose MongoDB over PostgreSQL with PostGIS?
-> **Answer:** *"For this specific application, freight disruption signals are highly polymorphic: weather alerts have wind speeds and precipitation fields; news alerts have publisher, RSS link, and extracted headline metadata. MongoDB's flexible schema allowed seamless document ingestion without running complex relational table migrations for each new signal provider.
+### Q4: Why did you choose PostgreSQL 16 with async SQLAlchemy 2.0 and asyncpg?
+> **Answer:** *"For freight logistics, relational integrity is non-negotiable: shipments belong to tenant users, disruptions intersect transit corridors, and risk assessments associate specific shipments to disruptions. PostgreSQL gives us strict foreign keys with `ON DELETE CASCADE`, check constraints, and unique compound indexes that prevent orphaned or corrupt assessments.
 > 
-> Furthermore, with Motor (async MongoDB driver for Python), our FastAPI async event loop is never blocked by database I/O. We enforce data integrity at the application layer using Pydantic schemas and ensure fast query times with compound indexes on `[('owner_id', 1), ('shipment_id', 1)]` for multi-tenant isolation."*
+> Furthermore, with asyncpg and SQLAlchemy 2.0, our FastAPI async event loop is never blocked by database I/O. Complex analytics like shipment risk trends across runs are computed orders of magnitude faster using SQL window functions (`LAG()`) and indexed 3-way joins than client-side processing."*
 
 ---
 
@@ -138,7 +136,7 @@ Use this when the interviewer asks: **"Walk me through your most impactful proje
 ---
 
 ### Q9: How is security and data isolation handled?
-> **Answer:** *"We implemented JWT (JSON Web Token) authentication using OAuth2 Bearer schemes and bcrypt password hashing via `passlib`. Every query to `/shipments` and `/risk-analysis` is scoped to the authenticated user's `owner_id`. A multi-tenant compound index ensures that even in shared MongoDB clusters, fleet operators can never access or modify another logistics company's shipments or routing directives."*
+> **Answer:** *"We implemented JWT (JSON Web Token) authentication using OAuth2 password flow with bcrypt password hashing and HttpOnly cookies. Every query to `/shipments`, `/analytics`, and `/risk-analysis` is scoped to the authenticated user's `owner_id`. A multi-tenant composite index ensures that even in shared PostgreSQL databases, fleet operators can never access or modify another logistics company's shipments or routing directives. Additionally, refresh tokens are rotated on every use and hashed with SHA-256 in the database to detect and neutralize token replay attacks."*
 
 ---
 

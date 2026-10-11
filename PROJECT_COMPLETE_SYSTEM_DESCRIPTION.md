@@ -41,10 +41,11 @@ flowchart TD
         CircuitBreaker["Fast-Fail Circuit Breaker<br/>(Catches 429 Quota Limits in <1s)"]
     end
 
-    subgraph DataStorage["Persistence Layer (MongoDB 7.0 / 8.0)"]
-        UsersCol[("users collection<br/>(Bcrypt Passwords, Roles)")]
-        ShipmentsCol[("shipments collection<br/>(Multi-Tenant Compound Index)")]
-        DisruptionsCol[("disruptions collection<br/>(Spatial Coordinates & Radii)")]
+    subgraph DataStorage["Persistence & Messaging Layer (PostgreSQL 16 & Redis 7)"]
+        UsersCol[("users & refresh_tokens tables<br/>(Bcrypt, SHA-256 Rotation)")]
+        ShipmentsCol[("shipments table<br/>(Composite Indexes, Keyset Seek)")]
+        DisruptionsCol[("disruptions table<br/>(content_hash Unique Deduplication)")]
+        TracesCol[("agent_traces & pipeline_runs<br/>(Atomic Workflow Telemetry)")]
     end
 
     subgraph ClientDashboard["Next.js 14 Client Layer"]
@@ -81,7 +82,7 @@ sequenceDiagram
     participant DA as Agent 2: Disruption Analyzer
     participant RE as Agent 3: Risk Evaluator
     participant RA as Agent 4: Recommendation Agent
-    participant DB as MongoDB / Cache
+    participant DB as PostgreSQL 16 / Redis Cache
     participant UI as Next.js Dashboard
 
     UI->>DC: Trigger /risk-analysis (or background sync)
@@ -197,59 +198,92 @@ In `backend/routers/risk_analysis.py`, an in-memory cache hashes the combined st
 
 ---
 
-## 6. Database Models & Schema Design (MongoDB)
+## 6. Database Models & Schema Design (PostgreSQL 16)
 
-The platform utilizes MongoDB (Motor async driver) with structured Pydantic v2 schemas:
+The platform utilizes **PostgreSQL 16** via **async SQLAlchemy 2.0** and **Alembic** migrations (with SQLite fallback for isolated unit testing).
 
-### 6.1 Collections
+### 6.1 Relational Schema Architecture
 
 #### 1. `users`
-```json
-{
-  "_id": "ObjectId(...)",
-  "email": "operator@logistics.io",
-  "name": "Fleet Dispatcher",
-  "hashed_password": "$2b$12$...",
-  "role": "admin",
-  "created_at": "2026-09-16T10:00:00Z"
-}
-```
+- `id` (VARCHAR PK, UUID)
+- `email` (VARCHAR UNIQUE, indexed)
+- `name` (VARCHAR)
+- `hashed_password` (VARCHAR)
+- `role` (VARCHAR, default `'operator'`)
+- `created_at` (TIMESTAMPTZ)
 
-#### 2. `shipments`
-```json
-{
-  "_id": "ObjectId(...)",
-  "owner_id": "operator@logistics.io",
-  "shipment_id": "IND-TRK-1002",
-  "origin": "Chennai",
-  "destination": "Madurai",
-  "route_highway": "NH44",
-  "latitude": 12.1200,
-  "longitude": 79.1500,
-  "status": "IN_TRANSIT",
-  "cargo_type": "Electronics",
-  "delivery_priority": "HIGH",
-  "updated_at": "2026-09-16T12:00:00Z"
-}
-```
-**Index:** Compound unique index on `[("owner_id", 1), ("shipment_id", 1)]` ensuring strict multi-tenant isolation.
+#### 2. `refresh_tokens`
+- `id` (VARCHAR PK, UUID)
+- `user_id` (FK -> `users.id` ON DELETE CASCADE)
+- `token_hash` (VARCHAR UNIQUE, indexed)
+- `expires_at` (TIMESTAMPTZ)
+- `revoked` (BOOLEAN, default False)
+- `created_at` (TIMESTAMPTZ)
 
-#### 3. `disruptions`
-```json
-{
-  "_id": "ObjectId(...)",
-  "id": "DIS-8392",
-  "type": "WEATHER",
-  "subtype": "Heavy Rain & Waterlogging",
-  "severity": "HIGH",
-  "latitude": 11.9401,
-  "longitude": 79.8083,
-  "radius_km": 40.0,
-  "location": "Viluppuram / NH44 Corridor",
-  "description": "Flash flooding causing standstill truck traffic.",
-  "timestamp": "2026-09-16T11:45:00Z"
-}
-```
+#### 3. `shipments`
+- `id` (VARCHAR PK, UUID)
+- `owner_id` (FK -> `users.id` ON DELETE CASCADE, indexed)
+- `shipment_id` (VARCHAR, e.g. `'IND-TRK-1002'`)
+- `origin_name` (VARCHAR), `destination_name` (VARCHAR)
+- `origin_lat`, `origin_lon`, `dest_lat`, `dest_lon`, `current_lat`, `current_lon` (FLOAT)
+- `cargo_type` (VARCHAR)
+- `priority` (VARCHAR: `'LOW'`, `'MEDIUM'`, `'HIGH'`, `'CRITICAL'`)
+- `status` (VARCHAR: `'IN_TRANSIT'`, `'DELIVERED'`, `'DELAYED'`, `'REROUTED'`)
+- `created_at`, `updated_at` (TIMESTAMPTZ)
+- **Index:** `ix_shipments_owner_id`, `ix_shipments_status`
+
+#### 4. `disruptions`
+- `id` (VARCHAR PK, UUID)
+- `type` (VARCHAR: `'WEATHER'`, `'TRAFFIC'`, `'PORT_CLOSURE'`, `'STRIKE'`, `'ACCIDENT'`)
+- `source` (VARCHAR)
+- `title` (VARCHAR)
+- `latitude`, `longitude`, `radius_km` (FLOAT)
+- `severity` (VARCHAR: `'LOW'`, `'MEDIUM'`, `'HIGH'`, `'CRITICAL'`)
+- `valid_from`, `valid_to` (TIMESTAMPTZ)
+- `raw_json` (JSONB / JSON)
+- `content_hash` (VARCHAR UNIQUE, indexed)
+- `created_at` (TIMESTAMPTZ)
+- **Index:** `ix_disruptions_valid_window (valid_from, valid_to)`
+
+#### 5. `pipeline_runs`
+- `id` (VARCHAR PK, UUID)
+- `owner_id` (FK -> `users.id` ON DELETE SET NULL)
+- `started_at`, `finished_at` (TIMESTAMPTZ)
+- `status` (VARCHAR: `'PENDING'`, `'COMPLETED'`, `'FAILED'`)
+- `shipments_count`, `disruptions_count`, `assessments_count` (INTEGER)
+- `summary` (JSONB / JSON)
+
+#### 6. `risk_assessments`
+- `id` (VARCHAR PK, UUID)
+- `run_id` (FK -> `pipeline_runs.id` ON DELETE CASCADE, indexed)
+- `shipment_id` (FK -> `shipments.id` ON DELETE CASCADE, indexed)
+- `disruption_id` (FK -> `disruptions.id` ON DELETE SET NULL, indexed)
+- `score` (FLOAT, CHECK `score >= 0`)
+- `level` (VARCHAR, CHECK `level IN ('NONE', 'LOW', 'MEDIUM', 'HIGH', 'CRITICAL')`)
+- `distance_km` (FLOAT)
+- `created_at` (TIMESTAMPTZ)
+- **Constraint:** Unique `(run_id, shipment_id, disruption_id)`
+
+#### 7. `recommendations`
+- `id` (VARCHAR PK, UUID)
+- `assessment_id` (FK -> `risk_assessments.id` ON DELETE CASCADE)
+- `action` (VARCHAR)
+- `rationale` (TEXT)
+- `source` (VARCHAR: `'llm'`, `'rules'`)
+- `created_at` (TIMESTAMPTZ)
+
+#### 8. `agent_traces`
+- `id` (VARCHAR PK, UUID)
+- `run_id` (FK -> `pipeline_runs.id` ON DELETE CASCADE, indexed)
+- `node` (VARCHAR)
+- `started_at` (TIMESTAMPTZ)
+- `duration_ms` (FLOAT)
+- `input_hash` (VARCHAR)
+- `output_summary` (TEXT)
+- `used_llm` (BOOLEAN)
+- `fallback_used` (BOOLEAN)
+- `tokens_estimate` (INTEGER)
+- `error` (TEXT nullable)
 
 ---
 
@@ -284,13 +318,21 @@ The frontend is built with **Next.js 14 (App Router)**, **TypeScript**, and **Ta
 | Method | Endpoint | Description | Auth Required |
 |---|---|---|---|
 | `POST` | `/auth/register` | Register new fleet operator | No |
-| `POST` | `/auth/login` | Authenticate & retrieve JWT Bearer token | No |
+| `POST` | `/auth/login` | Authenticate & retrieve JWT Bearer token + set refresh cookie | No |
+| `POST` | `/auth/refresh` | Rotate refresh token cookie and issue new access token | Cookie / Bearer |
+| `POST` | `/auth/logout` | Revoke active refresh token session | Cookie / Bearer |
 | `GET` | `/auth/me` | Fetch authenticated user profile | Bearer JWT |
-| `GET` | `/shipments` | Fetch all active shipments for tenant | Bearer JWT |
+| `GET` | `/shipments` | Fetch shipments with keyset/offset pagination | Bearer JWT |
 | `POST` | `/shipments` | Create a new active tracking shipment | Bearer JWT |
 | `POST` | `/shipments/seed-demo` | Seed 15 representative Indian transit trucks | Bearer JWT |
-| `GET` | `/disruptions` | Ingest and return live weather & RSS disruptions | Optional |
-| `GET` | `/risk-analysis` | Execute 4-agent pipeline or return cached analysis | Optional |
+| `GET` | `/disruptions` | Ingest and return live weather & news disruptions | Optional |
+| `GET` | `/risk-analysis` | Execute LangGraph pipeline or return cached analysis | Optional |
+| `POST` | `/risk-analysis/run-async` | Trigger async Celery risk workflow job | Optional |
+| `GET` | `/pipeline-runs/{id}/trace` | Retrieve observable node execution traces & telemetry | Optional |
+| `GET` | `/analytics/kpis` | Aggregated risk counts using SQL `FILTER` | Bearer JWT |
+| `GET` | `/analytics/risk-trends` | Run-over-run score delta using SQL `LAG()` | Bearer JWT |
+| `GET` | `/analytics/corridor-exposure` | Grouped risk count and max score by corridor | Bearer JWT |
+| `GET` | `/analytics/timeline` | Zero-filled daily disruption trend via `generate_series` | Bearer JWT |
 | `WS` | `/ws/risk-updates` | WebSocket channel for real-time fleet sync | Token Param |
 
 ---
