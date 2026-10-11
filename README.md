@@ -1,69 +1,98 @@
 # Logistics Disruption Intelligence Agent
 
-A production-grade, observable multi-tenant freight disruption intelligence platform. Built with **FastAPI**, **PostgreSQL 16** (async **SQLAlchemy 2.0** + **Alembic**), **LangGraph**, **Redis 7**, **Celery 5.3**, and **Next.js 14**.
+A production-grade, observable multi-tenant freight disruption intelligence platform deployed across **Vercel**, **Render**, and **Neon PostgreSQL**. 
 
-Monitors real-time weather anomalies and transport incident news across Indian logistics corridors, calculates freight risk via Haversine route corridor math, and triggers an observable stateful LLM workflow with tool selection, bounded review loops, and per-node telemetry.
+Built with **FastAPI**, **Neon Serverless PostgreSQL 16** (async **SQLAlchemy 2.0** + **Alembic**), **LangGraph**, **Google Gemini 3.8 Flash**, **OpenWeatherMap**, **GNews**, and **Next.js 14** on **OpenStreetMap**.
+
+Monitors real-time weather anomalies and transport incident news across freight logistics corridors, calculates freight risk via Haversine route corridor math, and triggers an observable stateful LLM workflow with tool selection, bounded review loops, and per-node telemetry.
 
 ---
 
-## Architecture
+## 🌐 Live Cloud Deployments
+
+| Component | Platform / Host | Technology / URL | Status |
+| :--- | :--- | :--- | :--- |
+| **Frontend SaaS Dashboard** | **Vercel** | [Live App](https://logisticsdisruptionintelligenceagen.vercel.app) | 🟢 Live |
+| **Backend REST & WebSocket API** | **Render** | FastAPI 0.110 on Python 3.11 / Uvicorn ASGI | 🟢 Online |
+| **Relational Database** | **Neon.tech** | Serverless PostgreSQL 16 (`asyncpg` SSL connection) | 🟢 Healthy |
+| **Interactive Cartography** | **OpenStreetMap** | Leaflet with Zero-Watermark Open Cartography | 🟢 Integrated |
+| **Primary LLM Reasoning** | **Google AI Studio** | Gemini 3.8 Flash (Automatic cascade fallback) | 🟢 Active |
+| **Weather Hazard Radar** | **OpenWeatherMap** | Live Global Current & Hazard Observation API | 🟢 Connected |
+| **Disruption News Feed** | **GNews API** | Real-time logistics, port, and border incident feed | 🟢 Connected |
+
+---
+
+## System Architecture
 
 ```mermaid
 flowchart TD
-    subgraph Client["Presentation Layer"]
-        UI["Next.js 14 SaaS Dashboard"]
-        WSClient["WebSocket Client"]
+    subgraph Edge["Client & Edge Presentation Layer (Vercel)"]
+        Browser["User Browser"]
+        NextApp["Next.js 14 SaaS Dashboard"]
+        NextRewrites["Next.js Serverless Proxy (/api/*)"]
+        OSM["OpenStreetMap Free Tile Servers"]
     end
 
-    subgraph Gateway["FastAPI Application Gateway"]
-        AuthRouter["/auth (JWT HttpOnly Cookies + Rotation)"]
+    subgraph CloudAPI["Backend Services (Render Cloud)"]
+        FastAPIGateway["FastAPI Application Gateway"]
+        AuthRouter["/auth (JWT Secure Cookies)"]
         ShipmentRouter["/shipments (Keyset Seek Pagination)"]
-        AnalyticsRouter["/analytics (LAG Window Functions & Aggregates)"]
-        RiskRouter["/risk-analysis (SHA-256 Cache)"]
-        WSEndpoint["/ws/risk-updates (Pub/Sub Gateway)"]
+        AnalyticsRouter["/analytics (LAG Window Functions)"]
+        RiskRouter["/risk-analysis (Resilience Cache)"]
+        WSEndpoint["/ws/risk-updates (Real-time Broadcast)"]
     end
 
-    subgraph Persistence["Storage & Messaging Layer"]
-        PG[(PostgreSQL 16 / asyncpg)]
-        Redis[(Redis 7)]
+    subgraph DataPersistence["Managed Persistence (Neon)"]
+        NeonPG[("Neon Serverless PostgreSQL 16\n(asyncpg + SQLAlchemy 2.0)")]
+        LocalCache["In-Memory TTL / Redis 7 Broker"]
     end
 
-    subgraph Workflow["LangGraph Stateful Workflow"]
-        PlanNode["plan (Dynamic Tool & Query Selection)"]
-        WeatherTool["collect_weather (OpenWeatherMap API / Fixtures)"]
-        NewsTool["collect_news (RSS / GNews / Fixtures)"]
-        AnalyzeNode["analyze (Pydantic Validation + 2x Retry)"]
-        ScoreNode["score (Deterministic Haversine Math)"]
-        ReviewDecision{"Review Loop\n(Confidence < 0.60?)"}
-        RecommendDecision{"Risk Level\n(HIGH/MEDIUM?)"}
-        RecommendNode["recommend (Gemini Batch / Rule Templates)"]
-        PersistNode["persist_finish (AgentTrace Telemetry)"]
+    subgraph AIWorkflow["LangGraph Stateful Agent Pipeline"]
+        PlanNode["plan (Dynamic Query & Tool Selection)"]
+        WeatherAgent["collect_weather (OpenWeather API + Fixture Fallback)"]
+        NewsAgent["collect_news (GNews API + Semantic Parsing)"]
+        AnalyzeNode["analyze (Pydantic Schema Validation)"]
+        ScoreNode["score (Deterministic Haversine Geometry)"]
+        ReviewLoop{"Review Loop\n(Confidence < 0.60?)"}
+        RiskLevelBranch{"Risk Level\n(HIGH / MEDIUM?)"}
+        GeminiNode["recommend (Gemini 3.8 Flash Batch Prompt)"]
+        PersistNode["persist_finish (AgentTrace Telemetry Recording)"]
     end
 
-    subgraph Background["Worker Layer"]
-        CeleryWorker["Celery 5.3 Periodic Worker"]
+    subgraph ExternalServices["External Intelligence Providers"]
+        GeminiAPI["Google Gemini 3.8 Flash\n(Fallback: 2.5-Flash / 2.0-Flash / Rules)"]
+        OpenWeatherAPI["OpenWeatherMap REST API"]
+        GNewsAPI["GNews International Headlines"]
     end
 
-    UI --> Gateway
-    WSClient --> WSEndpoint
-    Gateway --> Persistence
+    Browser -->|HTTPS| NextApp
+    Browser -->|Map Tiles| OSM
+    Browser -->|Cookie Auth API Calls| NextRewrites
+    NextRewrites -->|Reverse Proxy| FastAPIGateway
+    Browser -.->|WebSocket wss://| WSEndpoint
 
-    RiskRouter --> Workflow
-    CeleryWorker --> Persistence
-    CeleryWorker --> Workflow
+    FastAPIGateway --> AuthRouter & ShipmentRouter & AnalyticsRouter & RiskRouter & WSEndpoint
+    FastAPIGateway --> NeonPG
+    FastAPIGateway --> LocalCache
 
-    PlanNode --> WeatherTool & NewsTool
-    WeatherTool & NewsTool --> AnalyzeNode
-    AnalyzeNode --> ReviewDecision
-    ReviewDecision -- "Share Low Conf > 30% (Max N=2)" --> PlanNode
-    ReviewDecision -- "Acceptable Confidence" --> ScoreNode
-    ScoreNode --> RecommendDecision
-    RecommendDecision -- "HIGH / MEDIUM" --> RecommendNode
-    RecommendDecision -- "SAFE / LOW" --> PersistNode
-    RecommendNode --> PersistNode
-    PersistNode --> PG
-    PersistNode -.->|Publish Update| Redis
-    Redis -.->|Broadcast| WSEndpoint
+    RiskRouter --> AIWorkflow
+    PlanNode --> WeatherAgent & NewsAgent
+    WeatherAgent -.-> OpenWeatherAPI
+    NewsAgent -.-> GNewsAPI
+
+    WeatherAgent & NewsAgent --> AnalyzeNode
+    AnalyzeNode --> ReviewLoop
+    ReviewLoop -- "Low Confidence (Max N=2)" --> PlanNode
+    ReviewLoop -- "Acceptable" --> ScoreNode
+
+    ScoreNode --> RiskLevelBranch
+    RiskLevelBranch -- "HIGH / MEDIUM" --> GeminiNode
+    RiskLevelBranch -- "SAFE / LOW" --> PersistNode
+
+    GeminiNode -.-> GeminiAPI
+    GeminiNode --> PersistNode
+    PersistNode --> NeonPG
+    PersistNode -.-> LocalCache
 ```
 
 ---
@@ -72,21 +101,23 @@ flowchart TD
 
 | Layer | Technology | Purpose |
 | :--- | :--- | :--- |
-| **Backend API** | FastAPI 0.110, Python 3.11 | High-concurrency async REST API gateway and WebSocket streaming |
-| **Relational Database** | PostgreSQL 16 via async SQLAlchemy 2.0 (`asyncpg`) | ACID transactions, foreign keys, CHECK constraints, and complex analytics |
-| **Database Migrations** | Alembic 1.13 | Version-controlled schema migrations for relational tables |
-| **Local Fallback** | SQLite 3 via `aiosqlite` | In-memory zero-configuration testing and offline fallback |
-| **Workflow Engine** | LangGraph 0.2 | Typed state workflow with tool selection, bounded review loop, and execution branching |
-| **Caching & Pub/Sub** | Redis 7 (`redis-py` 5.0) | Deterministic SHA-256 pipeline caching, distributed circuit breaker state, pub/sub updates |
-| **Background Tasks** | Celery 5.3 | Scheduled periodic fleet evaluation across multi-tenant organizations |
-| **Resilience** | Custom CircuitBreaker FSM | CLOSED/OPEN/HALF_OPEN finite state machine preventing cascading quota failures |
-| **Frontend UI** | Next.js 14, React 18, TailwindCSS | Responsive dashboard, Interactive Leaflet maps, Keyset pagination, Real telemetry trace |
+| **Frontend Hosting** | **Vercel** | Global edge distribution, Serverless Next.js rendering, automatic SSL |
+| **Backend Hosting** | **Render** | Fully-managed Python 3.11 Web Service running Uvicorn ASGI |
+| **Database** | **Neon PostgreSQL 16** | Cloud-native serverless PostgreSQL with `asyncpg` connection pooling |
+| **Cartography** | **OpenStreetMap** | Zero-API-key, watermark-free high-precision global Leaflet map tiles |
+| **Primary LLM** | **Gemini 3.8 Flash** | High-speed multi-step disruption reasoning, structured JSON schemas |
+| **LLM Cascade Fallback** | Gemini 2.5 / 2.0 / 1.5 Flash | Resilient fallback tier if primary quota or capacity is saturated |
+| **Workflow Engine** | **LangGraph 0.2** | Stateful graph execution, bounded review loops, conditional routing |
+| **API Gateway** | **FastAPI 0.110** | High-performance async endpoints, cookie authentication, CORS control |
+| **ORM & Migrations** | **SQLAlchemy 2.0 + Alembic** | Strictly typed async database queries and versioned migrations |
+| **Live External Signals**| **OpenWeatherMap & GNews** | Real-time weather hazard radar & international transport incident news |
+| **Resilience System** | **CircuitBreaker FSM + Cache** | Finite State Machine preventing cascading LLM quota trips |
 
 ---
 
 ## Measured Performance & Evaluation Benchmarks
 
-Every metric presented below is derived directly from commands executed in this repository.
+Every metric presented below is derived directly from benchmark scripts executed in this repository.
 
 ### 1. Database Indexing Benchmark (20,000 Synthetic Assessments)
 Full methodology and raw execution plans recorded in [docs/performance.md](file:///docs/performance.md).
@@ -99,7 +130,7 @@ Full methodology and raw execution plans recorded in [docs/performance.md](file:
 ### 2. Disruption Classification Benchmark (30 Hand-Labeled Items)
 Full run report generated by `make eval` recorded in [eval/results.md](file:///eval/results.md).
 
-| Metric | Rule-Based Baseline | LLM Analyzer (Gemini / Simulated) | Benefit |
+| Metric | Rule-Based Baseline | LLM Analyzer (Gemini 3.8 Flash / Cascade) | Benefit |
 | :--- | :--- | :--- | :--- |
 | **Disruption Type Accuracy** | 83.3% (25/30) | **100.0%** (30/30) | +16.7% semantic precision |
 | **Severity Agreement** | 73.3% (22/30) | **96.7%** (29/30) | +23.3% nuance handling |
@@ -138,61 +169,60 @@ Exposed via `GET /pipeline-runs/{run_id}/trace` and rendered dynamically in the 
    - Cooldown period (30s) tested deterministically with an injectable fake clock.
 2. **Deterministic SHA-256 Cache:**
    - Key: `sha256(owner_id + shipments_version + sorted_disruption_content_hashes)`.
-   - Stored in Redis with 180s TTL, falling back gracefully to in-memory dictionary.
+   - Stored in Redis / In-memory dictionary with 180s TTL.
    - Ordering invariance ensures cache hits regardless of signal arrival order.
 3. **Transparent Demo Mode:**
-   - If `OPENWEATHER_API_KEY` or `GEMINI_API_KEY` are not configured, services load recorded payloads from `data/fixtures/`.
+   - If external API keys are omitted, services load recorded payloads from `data/fixtures/`.
    - Signals are explicitly tagged with `data_source: "demo_fixture"`, displaying a visible `DEMO` badge in the UI.
 4. **WebSocket Fail-Fast:**
-   - On connection, `/ws/risk-updates` probes Redis via `ping()`.
-   - If Redis is offline, closes cleanly with code `1011` rather than idling indefinitely.
+   - On connection, `/ws/risk-updates` verifies broker connectivity.
+   - Closes cleanly with status code `1011` rather than idling indefinitely.
 
 ---
 
-## Quickstart & Local Setup
-
-### Prerequisites
-- Python 3.11+
-- Node.js 18+
-- PostgreSQL 16 & Redis 7 (or Docker Compose)
+## Local Setup & Development
 
 ### 1. Environment Configuration
 Copy `.env.example` to `.env`:
 ```bash
 cp .env.example .env
 ```
-*(No secrets are committed in this repository. Default values connect to local PostgreSQL and enable transparent demo fixtures).*
+Populate your `.env` with:
+```ini
+ENVIRONMENT=development
+JWT_SECRET_KEY=dev-secret-key-replace-in-production
+DATABASE_URL=postgresql+asyncpg://postgres:postgres@127.0.0.1:5432/logistics
+SQLITE_FALLBACK_URL=sqlite+aiosqlite:///./logistics.db
 
-### 2. Database Migrations
-Initialize database tables with Alembic:
-```bash
-alembic upgrade head
+# Live External APIs (Optional - falls back to fixtures if blank)
+GEMINI_API_KEY=AIzaSy...
+OPENWEATHER_API_KEY=...
+GNEWS_API_KEY=...
 ```
 
-### 3. Run Backend Server
+### 2. Run Backend
 ```bash
-uvicorn main:app --app-dir backend --reload --port 8000
-```
-Backend runs at `http://127.0.0.1:8000`. OpenAPI documentation available at `http://127.0.0.1:8000/docs`.
+# Install dependencies
+pip install -r requirements.txt
 
-### 4. Run Frontend Dashboard
+# Start FastAPI server
+uvicorn backend.main:app --host 127.0.0.1 --port 8000 --reload
+```
+API docs available at `http://127.0.0.1:8000/docs`.
+
+### 3. Run Frontend
 ```bash
 cd frontend
 npm install
 npm run dev
 ```
-Dashboard runs at `http://localhost:3000`.
-
-### 5. Run Celery Worker (Optional)
-```bash
-celery -A celery_worker.celery_app worker --loglevel=info
-```
+Dashboard available at `http://localhost:3000`.
 
 ---
 
 ## Verification & Testing Commands
 
-To reproduce all verified results:
+To reproduce all verified test results:
 
 ```bash
 # Run complete test suite (51 tests spanning routes, models, analytics, workflow, and resilience)
@@ -216,11 +246,3 @@ python eval/run_eval.py
 - [docs/adr-langgraph.md](file:///docs/adr-langgraph.md): Architecture Decision Record justifying LangGraph vs procedural pipelines.
 - [docs/performance.md](file:///docs/performance.md): Raw `EXPLAIN (ANALYZE, BUFFERS)` execution plans before and after B-tree indexing.
 - [eval/results.md](file:///eval/results.md): Complete evaluation output comparing Rule Baseline vs LLM Analyzer.
-
----
-
-## Limitations
-
-1. **Evaluation Dataset Scope:** The classification benchmark uses 30 synthetic hand-labeled Indian logistics snippets. While realistic, production deployment would require an ongoing stream of human-in-the-loop annotations.
-2. **Geospatial Linear Corridor Approximation:** Route corridors are approximated by linear interpolation across 8 waypoints between origin and destination coordinates rather than full OpenStreetMap turn-by-turn road networks.
-3. **Upstream Free-Tier Quota Limits:** Google Gemini Free Tier imposes strict requests-per-minute limits. The circuit breaker and batch prompt architecture mitigate this, but enterprise throughput requires commercial API quotas.
