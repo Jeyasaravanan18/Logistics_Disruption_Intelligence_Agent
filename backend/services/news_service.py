@@ -1,13 +1,22 @@
 """
-News Service — fetches live real-time logistics disruptions in India via Google News Live RSS & GNews.
-Zero synthetic/mock data: extracts real, up-to-the-minute events.
+News Service — fetches logistics disruption events in India.
+Primary: Live RSS feed for Indian logistics, expressways, and roadblocks.
+Secondary: GNews API if key provided.
+Fallback / Demo: Loads recorded fixtures from data/fixtures/news_fixtures.json
+when external network feeds fail or in demo environments, tagging them with data_source: "demo_fixture".
 """
 
+from __future__ import annotations
+
+import json
 import os
-import httpx
 import xml.etree.ElementTree as ET
 from datetime import datetime
 from email.utils import parsedate_to_datetime
+from pathlib import Path
+from typing import List, Optional
+
+import httpx
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -45,9 +54,9 @@ LOCATION_KEYWORDS = {
 }
 
 HIGHWAY_KEYWORDS = {
-    "NH44": (17.3850, 78.4867),  # Central spine (Hyderabad intersection)
-    "NH48": (21.1702, 72.8311),  # Delhi-Mumbai-Chennai corridor (Surat mid)
-    "NH16": (17.6868, 83.2185),  # East coast corridor (Visakhapatnam mid)
+    "NH44": (17.3850, 78.4867),
+    "NH48": (21.1702, 72.8311),
+    "NH16": (17.6868, 83.2185),
     "Yamuna Expressway": (27.5000, 77.7000),
     "Mumbai-Pune Expressway": (18.7500, 73.4000),
     "Samruddhi": (19.8762, 75.3433),
@@ -60,20 +69,26 @@ SEVERITY_KEYWORDS = {
 }
 
 
-def _parse_text_to_disruption(title: str, description: str, url: str, pub_date_str: str, source_name: str, idx: int) -> dict:
+def _parse_text_to_disruption(
+    title: str,
+    description: str,
+    url: str,
+    pub_date_str: str,
+    source_name: str,
+    idx: int,
+    data_source: str = "live_api",
+) -> dict:
     content = f"{title} {description}".lower()
 
     detected_location = None
-    lat, lon = 20.5937, 78.9629  # Default to India centroid
+    lat, lon = 20.5937, 78.9629
 
-    # Match cities first
     for city, coords in LOCATION_KEYWORDS.items():
         if city.lower() in content:
             detected_location = city
             lat, lon = coords
             break
 
-    # Match highways if city not found
     if not detected_location:
         for hwy, coords in HIGHWAY_KEYWORDS.items():
             if hwy.lower() in content:
@@ -81,14 +96,12 @@ def _parse_text_to_disruption(title: str, description: str, url: str, pub_date_s
                 lat, lon = coords
                 break
 
-    # Determine severity
     severity = "MEDIUM"
     for level, keywords in SEVERITY_KEYWORDS.items():
         if any(kw in content for kw in keywords):
             severity = level
             break
 
-    # Parse ISO timestamp
     iso_timestamp = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
     if pub_date_str:
         try:
@@ -111,22 +124,63 @@ def _parse_text_to_disruption(title: str, description: str, url: str, pub_date_s
         "radius_km": 50,
         "severity": severity,
         "description": title[:220],
-        "source": source_name,
+        "source": source_name if data_source == "live_api" else f"{source_name} (Demo Fixture)",
+        "data_source": data_source,
         "url": url,
         "timestamp": iso_timestamp,
     }
 
 
+def _load_news_fixtures() -> list[dict]:
+    """Load recorded news fixtures from data/fixtures/news_fixtures.json."""
+    fixtures_path = (
+        Path(__file__).resolve().parent.parent.parent / "data" / "fixtures" / "news_fixtures.json"
+    )
+    if not fixtures_path.exists():
+        return []
+
+    try:
+        with open(fixtures_path, "r", encoding="utf-8") as f:
+            records = json.load(f)
+
+        disruptions = []
+        for idx, item in enumerate(records):
+            disruptions.append({
+                "id": f"N-FIX-{100 + idx}",
+                "type": "news",
+                "subtype": "Roadway Incident",
+                "location": item.get("location", "National Highway"),
+                "lat": item.get("lat", 20.5937),
+                "lon": item.get("lon", 78.9629),
+                "latitude": item.get("lat", 20.5937),
+                "longitude": item.get("lon", 78.9629),
+                "radius_km": 50,
+                "severity": item.get("severity", "MEDIUM"),
+                "description": item.get("title", ""),
+                "source": f"{item.get('source', 'Recorded News')} (Demo Fixture)",
+                "data_source": "demo_fixture",
+                "url": item.get("url", ""),
+                "timestamp": item.get("pub_date", datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")),
+            })
+        return disruptions
+    except Exception as e:
+        print(f"[NewsService] Failed to parse news fixtures: {e}")
+        return []
+
+
 async def fetch_news_disruptions() -> list[dict]:
     """
-    Fetch real-time logistics disruption news.
-    Primary: Live Google News RSS feed for Indian logistics, expressways, and roadblocks.
-    Secondary: GNews API if key provided.
+    Fetch logistics disruption news.
+    Queries live RSS and GNews API. If network is unreachable or results are empty,
+    falls back cleanly to recorded fixtures marked as 'demo_fixture'.
     """
+    if os.getenv("DEMO_MODE", "").lower() in ("true", "1"):
+        return _load_news_fixtures()
+
     disruptions = []
     seen_titles = set()
 
-    # 1. Fetch live real-time RSS from Google News (no rate limit, zero delay)
+    # 1. Fetch live RSS from Google News
     rss_queries = [
         "highway+closure+OR+traffic+OR+accident+India+when:3d",
         "expressway+jam+OR+landslide+OR+flood+road+India+when:3d",
@@ -157,13 +211,14 @@ async def fetch_news_disruptions() -> list[dict]:
                             url=link,
                             pub_date_str=pub_date,
                             source_name=source,
-                            idx=len(disruptions)
+                            idx=len(disruptions),
+                            data_source="live_api",
                         )
                         disruptions.append(d)
             except Exception as e:
                 print(f"[NewsService] Error fetching RSS query '{q}': {e}", flush=True)
 
-    # 2. If GNews API key is available, query GNews as well
+    # 2. GNews API if key provided
     api_key = os.getenv("GNEWS_API_KEY", "").strip(' "\'')
     if api_key and api_key != "your_gnews_api_key_here":
         try:
@@ -192,12 +247,15 @@ async def fetch_news_disruptions() -> list[dict]:
                             url=article.get("url", ""),
                             pub_date_str=article.get("publishedAt", ""),
                             source_name=article.get("source", {}).get("name", "GNews Live"),
-                            idx=len(disruptions)
+                            idx=len(disruptions),
+                            data_source="live_api",
                         )
                         disruptions.append(d)
         except Exception as e:
             print(f"[NewsService] GNews supplement notice: {e}", flush=True)
 
-    print(f"[NewsService] Successfully gathered {len(disruptions)} live news disruption events.", flush=True)
-    return disruptions
+    # If external queries yielded no items, fallback to fixtures
+    if not disruptions:
+        return _load_news_fixtures()
 
+    return disruptions

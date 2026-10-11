@@ -1,9 +1,7 @@
 """
 Agent 2: Disruption Analysis Agent
 Responsibility: Interprets each disruption, enriches severity, and extracts key attributes.
-
-UPGRADED: Now uses LangChain LCEL pipeline with ChatGoogleGenerativeAI + JsonOutputParser
-for structured, reliable AI reasoning with automatic fallback.
+Uses Gemini structured JSON with circuit-breaker protection and deterministic rule-based fallback.
 """
 
 import os

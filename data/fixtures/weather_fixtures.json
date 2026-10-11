@@ -1,0 +1,98 @@
+[
+  {
+    "city": "Chennai",
+    "lat": 13.0827,
+    "lon": 80.2707,
+    "weather_data": {
+      "coord": {"lon": 80.2707, "lat": 13.0827},
+      "weather": [{"id": 502, "main": "Rain", "description": "heavy intensity rain", "icon": "10d"}],
+      "main": {"temp": 28.5, "feels_like": 33.2, "temp_min": 27.0, "temp_max": 29.5, "pressure": 1008, "humidity": 88},
+      "wind": {"speed": 7.2, "deg": 80},
+      "dt": 1718000000
+    }
+  },
+  {
+    "city": "Mumbai",
+    "lat": 19.0760,
+    "lon": 72.8777,
+    "weather_data": {
+      "coord": {"lon": 72.8777, "lat": 19.0760},
+      "weather": [{"id": 211, "main": "Thunderstorm", "description": "thunderstorm with light rain", "icon": "11d"}],
+      "main": {"temp": 29.8, "feels_like": 36.1, "temp_min": 28.5, "temp_max": 31.0, "pressure": 1006, "humidity": 84},
+      "wind": {"speed": 13.5, "deg": 240},
+      "dt": 1718000000
+    }
+  },
+  {
+    "city": "Delhi",
+    "lat": 28.6139,
+    "lon": 77.2090,
+    "weather_data": {
+      "coord": {"lon": 77.2090, "lat": 28.6139},
+      "weather": [{"id": 741, "main": "Fog", "description": "dense fog", "icon": "50d"}],
+      "main": {"temp": 14.2, "feels_like": 13.8, "temp_min": 12.0, "temp_max": 16.0, "pressure": 1018, "humidity": 94},
+      "wind": {"speed": 2.1, "deg": 310},
+      "dt": 1718000000
+    }
+  },
+  {
+    "city": "Bangalore",
+    "lat": 12.9716,
+    "lon": 77.5946,
+    "weather_data": {
+      "coord": {"lon": 77.5946, "lat": 12.9716},
+      "weather": [{"id": 801, "main": "Clouds", "description": "few clouds", "icon": "02d"}],
+      "main": {"temp": 24.1, "feels_like": 24.0, "temp_min": 22.0, "temp_max": 26.5, "pressure": 1014, "humidity": 65},
+      "wind": {"speed": 4.6, "deg": 90},
+      "dt": 1718000000
+    }
+  },
+  {
+    "city": "Kolkata",
+    "lat": 22.5726,
+    "lon": 88.3639,
+    "weather_data": {
+      "coord": {"lon": 88.3639, "lat": 22.5726},
+      "weather": [{"id": 500, "main": "Rain", "description": "light rain", "icon": "10d"}],
+      "main": {"temp": 31.0, "feels_like": 37.0, "temp_min": 29.5, "temp_max": 32.5, "pressure": 1004, "humidity": 78},
+      "wind": {"speed": 5.8, "deg": 160},
+      "dt": 1718000000
+    }
+  },
+  {
+    "city": "Hyderabad",
+    "lat": 17.3850,
+    "lon": 78.4867,
+    "weather_data": {
+      "coord": {"lon": 78.4867, "lat": 17.3850},
+      "weather": [{"id": 800, "main": "Clear", "description": "clear sky", "icon": "01d"}],
+      "main": {"temp": 32.4, "feels_like": 34.0, "temp_min": 30.0, "temp_max": 34.0, "pressure": 1010, "humidity": 45},
+      "wind": {"speed": 3.8, "deg": 110},
+      "dt": 1718000000
+    }
+  },
+  {
+    "city": "Pune",
+    "lat": 18.5204,
+    "lon": 73.8567,
+    "weather_data": {
+      "coord": {"lon": 73.8567, "lat": 18.5204},
+      "weather": [{"id": 501, "main": "Rain", "description": "moderate rain", "icon": "10d"}],
+      "main": {"temp": 26.2, "feels_like": 27.0, "temp_min": 24.5, "temp_max": 28.0, "pressure": 1010, "humidity": 82},
+      "wind": {"speed": 8.0, "deg": 230},
+      "dt": 1718000000
+    }
+  },
+  {
+    "city": "Ahmedabad",
+    "lat": 23.0225,
+    "lon": 72.5714,
+    "weather_data": {
+      "coord": {"lon": 72.5714, "lat": 23.0225},
+      "weather": [{"id": 800, "main": "Clear", "description": "clear sky", "icon": "01d"}],
+      "main": {"temp": 41.5, "feels_like": 43.0, "temp_min": 38.0, "temp_max": 43.0, "pressure": 1005, "humidity": 30},
+      "wind": {"speed": 4.1, "deg": 280},
+      "dt": 1718000000
+    }
+  }
+]

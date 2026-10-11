@@ -54,12 +54,19 @@ export default function DisruptionList({ disruptions, collectorReasoning }: Prop
                     <span className={`w-2 h-2 rounded-full ${isHigh ? 'bg-red-500' : isMed ? 'bg-amber-500' : 'bg-emerald-500'}`}></span>
                     {d.subtype}
                   </div>
-                  <div className={`px-2.5 py-0.5 text-[10px] font-bold border rounded-md uppercase tracking-wider ${
-                    isHigh ? 'bg-red-50 text-red-700 border-red-200' : 
-                    isMed ? 'bg-amber-50 text-amber-700 border-amber-200' : 
-                    'bg-emerald-50 text-emerald-700 border-emerald-200'
-                  }`}>
-                    {d.severity}
+                  <div className="flex items-center gap-1.5">
+                    {d.data_source === "demo_fixture" && (
+                      <span className="px-2 py-0.5 text-[9px] font-bold border rounded-md uppercase tracking-wider bg-purple-50 text-purple-700 border-purple-200">
+                        DEMO
+                      </span>
+                    )}
+                    <div className={`px-2.5 py-0.5 text-[10px] font-bold border rounded-md uppercase tracking-wider ${
+                      isHigh ? 'bg-red-50 text-red-700 border-red-200' : 
+                      isMed ? 'bg-amber-50 text-amber-700 border-amber-200' : 
+                      'bg-emerald-50 text-emerald-700 border-emerald-200'
+                    }`}>
+                      {d.severity}
+                    </div>
                   </div>
                 </div>
                 <p className="text-sm text-slate-600 leading-relaxed mb-6">{d.description}</p>

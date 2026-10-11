@@ -1,9 +1,7 @@
 """
 Agent 4: Recommendation Agent
 Responsibility: Generates actionable recommendations for each at-risk shipment.
-
-UPGRADED: Now uses LangChain LCEL pipeline with ChatGoogleGenerativeAI + JsonOutputParser.
-Uses a tailor prompt with full shipment and disruption context. Falls back to rule templates.
+Uses structured Gemini prompt with full shipment and disruption context, falling back to rule templates.
 """
 
 import os

@@ -1,9 +1,17 @@
 """
-Weather Service — fetches live real-time weather disruptions across Indian hubs via OpenWeatherMap API.
-Strictly real-time data only (synthetic data disabled for production).
+Weather Service — fetches weather disruptions across Indian logistics hubs.
+When OPENWEATHER_API_KEY is configured, fetches live data from OpenWeatherMap API.
+When missing or offline, gracefully loads recorded payloads from data/fixtures/weather_fixtures.json
+and explicitly tags items with data_source: "demo_fixture" (supporting transparent demo mode).
 """
 
+from __future__ import annotations
+
+import json
 import os
+from pathlib import Path
+from typing import List, Optional
+
 import httpx
 from dotenv import load_dotenv
 
@@ -45,18 +53,21 @@ WEATHER_SEVERITY_MAP = {
 }
 
 
-def _map_weather_to_disruption(city: dict, weather_data: dict) -> dict | None:
-    """Convert OpenWeatherMap API response to unified disruption dict with meteorological thresholds."""
+def _map_weather_to_disruption(
+    city: dict,
+    weather_data: dict,
+    data_source: str = "live_api",
+) -> dict | None:
+    """Convert OpenWeatherMap response payload to unified disruption schema."""
     from datetime import datetime, timezone
-    
+
     main = weather_data.get("weather", [{}])[0].get("main", "Clear")
     desc = weather_data.get("weather", [{}])[0].get("description", "")
-    
+
     temp = weather_data.get("main", {}).get("temp", 25)
     humidity = weather_data.get("main", {}).get("humidity", 50)
     wind_speed = weather_data.get("wind", {}).get("speed", 0)
 
-    # Dynamic severity adjustment based on live atmospheric data
     severity = WEATHER_SEVERITY_MAP.get(main, "LOW")
     subtype = f"{main} / {desc.title()}"
 
@@ -80,6 +91,8 @@ def _map_weather_to_disruption(city: dict, weather_data: dict) -> dict | None:
         f"{'Transit conditions normal.' if is_nominal else 'Potential impact on road freight transit.'}"
     )
 
+    source_label = "OpenWeatherMap (Live)" if data_source == "live_api" else "OpenWeatherMap (Demo Fixture)"
+
     return {
         "id": f"W-{city['name'][:3].upper()}",
         "type": "weather",
@@ -92,16 +105,45 @@ def _map_weather_to_disruption(city: dict, weather_data: dict) -> dict | None:
         "radius_km": 40,
         "severity": severity,
         "description": description,
-        "source": "OpenWeatherMap (Live)",
+        "source": source_label,
+        "data_source": data_source,
         "timestamp": ts,
     }
 
 
+def _load_weather_fixtures() -> list[dict]:
+    """Load recorded weather fixtures from data/fixtures/weather_fixtures.json."""
+    fixtures_path = (
+        Path(__file__).resolve().parent.parent.parent / "data" / "fixtures" / "weather_fixtures.json"
+    )
+    if not fixtures_path.exists():
+        return []
+
+    try:
+        with open(fixtures_path, "r", encoding="utf-8") as f:
+            records = json.load(f)
+
+        disruptions = []
+        for item in records:
+            city = {"name": item["city"], "lat": item["lat"], "lon": item["lon"]}
+            disruption = _map_weather_to_disruption(city, item["weather_data"], data_source="demo_fixture")
+            if disruption:
+                disruptions.append(disruption)
+        return disruptions
+    except Exception as e:
+        print(f"[WeatherService] Failed to parse weather fixtures: {e}")
+        return []
+
+
 async def fetch_weather_disruptions() -> list[dict]:
-    """Fetch weather disruptions for all monitored cities."""
+    """
+    Fetch weather disruptions for monitored hubs.
+    If OPENWEATHER_API_KEY is not configured or live calls fail,
+    falls back cleanly to recorded fixtures marked as 'demo_fixture'.
+    """
     api_key = os.getenv("OPENWEATHER_API_KEY", "").strip(' "\'')
     if not api_key or api_key == "your_openweather_api_key_here":
-        raise ValueError("Missing OpenWeatherMap API Key. Synthetic data is disabled for production.")
+        return _load_weather_fixtures()
 
     disruptions = []
     async with httpx.AsyncClient(timeout=10.0) as client:
@@ -118,10 +160,14 @@ async def fetch_weather_disruptions() -> list[dict]:
                 )
                 if resp.status_code == 200:
                     data = resp.json()
-                    disruption = _map_weather_to_disruption(city, data)
+                    disruption = _map_weather_to_disruption(city, data, data_source="live_api")
                     if disruption:
                         disruptions.append(disruption)
             except Exception as e:
                 print(f"[WeatherService] Error fetching {city['name']}: {e}")
+
+    # Fallback to fixtures if external API was unreachable
+    if not disruptions:
+        return _load_weather_fixtures()
 
     return disruptions

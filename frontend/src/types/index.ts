@@ -21,6 +21,7 @@ export interface Disruption {
   severity: "HIGH" | "MEDIUM" | "LOW";
   description: string;
   source: string;
+  data_source?: "live_api" | "demo_fixture" | string;
   timestamp: string;
   impact_duration_hours?: number;
 }

@@ -75,7 +75,8 @@ async def websocket_endpoint(websocket: WebSocket):
     redis_client = None
     pubsub = None
     try:
-        redis_client = await aioredis.from_url(REDIS_URL, decode_responses=True)
+        redis_client = await aioredis.from_url(REDIS_URL, decode_responses=True, socket_connect_timeout=1)
+        await redis_client.ping()
         pubsub = redis_client.pubsub()
         await pubsub.subscribe("risk_updates")
         async for message in pubsub.listen():

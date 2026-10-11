@@ -189,8 +189,8 @@ async def test_risk_analysis_contract(async_client):
          patch("routers.risk_analysis.run_pipeline", new_callable=AsyncMock) as mock_run:
         mock_ship.return_value = [{"shipment_id": "S101"}]
         mock_run.return_value = fake_result
-        from routers.risk_analysis import _MEM_CACHE
-        _MEM_CACHE.clear()
+        from routers.risk_analysis import risk_cache
+        risk_cache.clear()
 
         response = await async_client.get("/risk-analysis")
         assert response.status_code == 200

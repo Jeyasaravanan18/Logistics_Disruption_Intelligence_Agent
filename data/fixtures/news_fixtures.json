@@ -1,0 +1,57 @@
+[
+  {
+    "title": "Severe waterlogging on NH44 near Hyderabad causes multi-kilometer freight gridlock",
+    "description": "Continuous overnight downpour flooded low-lying sections of National Highway 44 between Shamshabad and Shadnagar. Heavy transport vehicles diverted to state highways.",
+    "url": "https://example.com/news/nh44-waterlogging-hyderabad",
+    "pub_date": "2024-06-10T08:30:00Z",
+    "source": "Logistics Dispatch India",
+    "location": "NH44",
+    "lat": 17.3850,
+    "lon": 78.4867,
+    "severity": "HIGH"
+  },
+  {
+    "title": "Landslide clearance underway on Mumbai-Pune Expressway ghat section",
+    "description": "Loose boulders fell across the expressway corridor near Khandala, closing two lanes towards Pune. Highway police operating alternate one-way transit.",
+    "url": "https://example.com/news/mumbai-pune-expressway-landslide",
+    "pub_date": "2024-06-10T09:15:00Z",
+    "source": "Maharashtra Highway Police Feed",
+    "location": "Mumbai-Pune Expressway",
+    "lat": 18.7500,
+    "lon": 73.4000,
+    "severity": "HIGH"
+  },
+  {
+    "title": "Dense fog warning across Delhi-Jaipur NH48 corridor reduces visibility below 50m",
+    "description": "IMD issues orange alert for morning logistics operations across Haryana and Rajasthan border stretches of NH48. Commercial freight speed restricted to 40 km/h.",
+    "url": "https://example.com/news/nh48-dense-fog-advisory",
+    "pub_date": "2024-06-10T06:00:00Z",
+    "source": "National Highway Authority Feed",
+    "location": "NH48",
+    "lat": 21.1702,
+    "lon": 72.8311,
+    "severity": "MEDIUM"
+  },
+  {
+    "title": "Protest march blocks toll plaza on Yamuna Expressway near Mathura",
+    "description": "Local farmer union demonstration halts freight traffic at Milestone 82. Express logistics convoys redirected via Old GT Road.",
+    "url": "https://example.com/news/yamuna-expressway-toll-blockade",
+    "pub_date": "2024-06-10T11:45:00Z",
+    "source": "Freight News Daily",
+    "location": "Yamuna Expressway",
+    "lat": 27.5000,
+    "lon": 77.7000,
+    "severity": "HIGH"
+  },
+  {
+    "title": "Road widening construction prompts 3-hour scheduled slowdowns near Chennai Port",
+    "description": "Civil works on Ennore port connectivity road creates localized staging queues for container trailers.",
+    "url": "https://example.com/news/chennai-port-connectivity-slowdown",
+    "pub_date": "2024-06-10T14:00:00Z",
+    "source": "Tamil Nadu Transport Bulletin",
+    "location": "Chennai",
+    "lat": 13.0827,
+    "lon": 80.2707,
+    "severity": "LOW"
+  }
+]
