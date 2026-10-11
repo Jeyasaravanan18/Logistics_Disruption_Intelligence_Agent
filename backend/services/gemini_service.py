@@ -14,7 +14,10 @@ import httpx
 from dotenv import load_dotenv
 import redis
 
-from backend.resilience.circuit_breaker import CircuitBreaker
+try:
+    from backend.resilience.circuit_breaker import CircuitBreaker
+except ImportError:
+    from resilience.circuit_breaker import CircuitBreaker
 
 load_dotenv()
 

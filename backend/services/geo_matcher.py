@@ -133,7 +133,7 @@ def compute_risk_score(
     Returns (risk_level, score).
     """
     severity_weight = {"HIGH": 3, "MEDIUM": 2, "LOW": 1}.get(disruption_severity, 1)
-    priority_weight = {"HIGH": 3, "MEDIUM": 2, "LOW": 1}.get(delivery_priority, 1)
+    priority_weight = {"CRITICAL": 4, "HIGH": 3, "MEDIUM": 2, "LOW": 1}.get(delivery_priority, 1)
     
     clamped_dist = min(distance_km, radius_km)
     proximity_factor = max(0.0, 1.0 - (clamped_dist / radius_km))

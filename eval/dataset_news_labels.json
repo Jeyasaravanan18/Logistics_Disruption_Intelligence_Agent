@@ -1,0 +1,242 @@
+[
+  {
+    "id": "NL-01",
+    "text": "Flash floods submerge NH44 stretch between Kurnool and Anantapur; commercial trucks stranded over 15km.",
+    "expected_type": "weather",
+    "expected_severity": "HIGH",
+    "expected_region": "Andhra Pradesh",
+    "source": "hand-labeled/synthetic"
+  },
+  {
+    "id": "NL-02",
+    "text": "Multi-axle container trailer rollover blocks two lanes on Mumbai-Pune Expressway ghat section.",
+    "expected_type": "traffic",
+    "expected_severity": "HIGH",
+    "expected_region": "Maharashtra",
+    "source": "hand-labeled/synthetic"
+  },
+  {
+    "id": "NL-03",
+    "text": "Dense radiation fog drops visibility to zero across NH48 near Gurugram; speed limits reduced to 30km/h.",
+    "expected_type": "weather",
+    "expected_severity": "MEDIUM",
+    "expected_region": "Haryana",
+    "source": "hand-labeled/synthetic"
+  },
+  {
+    "id": "NL-04",
+    "text": "Farmer union tractor march blocks toll booths on Western Peripheral Expressway near Kundli.",
+    "expected_type": "civil_unrest",
+    "expected_severity": "HIGH",
+    "expected_region": "Delhi NCR",
+    "source": "hand-labeled/synthetic"
+  },
+  {
+    "id": "NL-05",
+    "text": "Scheduled flyover expansion causes 20-minute crawling traffic near Chennai Guindy industrial hub.",
+    "expected_type": "traffic",
+    "expected_severity": "LOW",
+    "expected_region": "Tamil Nadu",
+    "source": "hand-labeled/synthetic"
+  },
+  {
+    "id": "NL-06",
+    "text": "Cyclone Dana landfall triggers gale winds exceeding 100km/h across coastal NH16 in Balasore.",
+    "expected_type": "weather",
+    "expected_severity": "HIGH",
+    "expected_region": "Odisha",
+    "source": "hand-labeled/synthetic"
+  },
+  {
+    "id": "NL-07",
+    "text": "Major landslide damages retaining wall on NH10 connecting Siliguri to Gangtok, halting heavy freight.",
+    "expected_type": "natural_disaster",
+    "expected_severity": "HIGH",
+    "expected_region": "West Bengal",
+    "source": "hand-labeled/synthetic"
+  },
+  {
+    "id": "NL-08",
+    "text": "Port truck drivers stage localized 3-hour sit-in at JNPT gate 4 over terminal gate automation glitches.",
+    "expected_type": "civil_unrest",
+    "expected_severity": "MEDIUM",
+    "expected_region": "Maharashtra",
+    "source": "hand-labeled/synthetic"
+  },
+  {
+    "id": "NL-09",
+    "text": "Brisk pre-monsoon showers bring cooling relief across Bengaluru Electronic City; arterial flyovers clear.",
+    "expected_type": "weather",
+    "expected_severity": "LOW",
+    "expected_region": "Karnataka",
+    "source": "hand-labeled/synthetic"
+  },
+  {
+    "id": "NL-10",
+    "text": "Toxic chemical tanker leak forces evacuation and temporary detour on Ahmedabad-Vadodara Expressway.",
+    "expected_type": "traffic",
+    "expected_severity": "HIGH",
+    "expected_region": "Gujarat",
+    "source": "hand-labeled/synthetic"
+  },
+  {
+    "id": "NL-11",
+    "text": "NHAI commences routine pothole resurfacing along NH52 between Jaipur and Kota with single-lane operation.",
+    "expected_type": "infrastructure",
+    "expected_severity": "LOW",
+    "expected_region": "Rajasthan",
+    "source": "hand-labeled/synthetic"
+  },
+  {
+    "id": "NL-12",
+    "text": "Severe dust storm with gusts up to 65km/h sweeps Bikaner-Jodhpur freight corridor, slowing container convoys.",
+    "expected_type": "weather",
+    "expected_severity": "MEDIUM",
+    "expected_region": "Rajasthan",
+    "source": "hand-labeled/synthetic"
+  },
+  {
+    "id": "NL-13",
+    "text": "Bridge structural inspection underway over Yamuna on NH19; freight vehicles diverted via Agra bypass.",
+    "expected_type": "infrastructure",
+    "expected_severity": "MEDIUM",
+    "expected_region": "Uttar Pradesh",
+    "source": "hand-labeled/synthetic"
+  },
+  {
+    "id": "NL-14",
+    "text": "Protestors block railway crossings and adjacent service roads near Ambala on GT Road.",
+    "expected_type": "civil_unrest",
+    "expected_severity": "HIGH",
+    "expected_region": "Punjab",
+    "source": "hand-labeled/synthetic"
+  },
+  {
+    "id": "NL-15",
+    "text": "Water pipeline rupture floods service lane on Outer Ring Road Hyderabad; express lanes open.",
+    "expected_type": "traffic",
+    "expected_severity": "LOW",
+    "expected_region": "Telangana",
+    "source": "hand-labeled/synthetic"
+  },
+  {
+    "id": "NL-16",
+    "text": "High temperature alert: daytime asphalt temperatures exceed 48C in Nagpur freight logistics park.",
+    "expected_type": "weather",
+    "expected_severity": "MEDIUM",
+    "expected_region": "Maharashtra",
+    "source": "hand-labeled/synthetic"
+  },
+  {
+    "id": "NL-17",
+    "text": "Tirunelveli-Madurai NH44 stretch closed after heavy monsoon discharge from Manimuthar dam.",
+    "expected_type": "weather",
+    "expected_severity": "HIGH",
+    "expected_region": "Tamil Nadu",
+    "source": "hand-labeled/synthetic"
+  },
+  {
+    "id": "NL-18",
+    "text": "Container trailer tire blowout sparks minor barrier fire on Samruddhi Mahamarg near Jalna; 1-hour delay.",
+    "expected_type": "traffic",
+    "expected_severity": "MEDIUM",
+    "expected_region": "Maharashtra",
+    "source": "hand-labeled/synthetic"
+  },
+  {
+    "id": "NL-19",
+    "text": "Customs clearance software upgrade at Kolkata Port triggers 12-hour document backlog for export trailers.",
+    "expected_type": "infrastructure",
+    "expected_severity": "MEDIUM",
+    "expected_region": "West Bengal",
+    "source": "hand-labeled/synthetic"
+  },
+  {
+    "id": "NL-20",
+    "text": "Routine night toll plaza lane calibration at Khed Shivapur toll; minimal 5-minute passenger car queues.",
+    "expected_type": "infrastructure",
+    "expected_severity": "LOW",
+    "expected_region": "Maharashtra",
+    "source": "hand-labeled/synthetic"
+  },
+  {
+    "id": "NL-21",
+    "text": "Brahmaputra river spate breaches embankment, inundating NH27 between Nagaon and Kaziranga.",
+    "expected_type": "natural_disaster",
+    "expected_severity": "HIGH",
+    "expected_region": "Assam",
+    "source": "hand-labeled/synthetic"
+  },
+  {
+    "id": "NL-22",
+    "text": "Dense smog warning across Delhi-Meerut Expressway; visual range down to 80m during early freight window.",
+    "expected_type": "weather",
+    "expected_severity": "MEDIUM",
+    "expected_region": "Uttar Pradesh",
+    "source": "hand-labeled/synthetic"
+  },
+  {
+    "id": "NL-23",
+    "text": "Overturned LPG tanker creates hazardous exclusion zone on NH48 near Vapi; full corridor sealed.",
+    "expected_type": "traffic",
+    "expected_severity": "HIGH",
+    "expected_region": "Gujarat",
+    "source": "hand-labeled/synthetic"
+  },
+  {
+    "id": "NL-24",
+    "text": "Intermittent light drizzle reported around Coimbatore bypass; roads damp but freight movement brisk.",
+    "expected_type": "weather",
+    "expected_severity": "LOW",
+    "expected_region": "Tamil Nadu",
+    "source": "hand-labeled/synthetic"
+  },
+  {
+    "id": "NL-25",
+    "text": "Unscheduled rail roko protest near Kanpur Central spills over to adjoining freight terminal feeder avenues.",
+    "expected_type": "civil_unrest",
+    "expected_severity": "MEDIUM",
+    "expected_region": "Uttar Pradesh",
+    "source": "hand-labeled/synthetic"
+  },
+  {
+    "id": "NL-26",
+    "text": "Hill slip clears on Shiradi Ghat (NH75) after emergency earthmover deployment; restricted single-file transit.",
+    "expected_type": "natural_disaster",
+    "expected_severity": "MEDIUM",
+    "expected_region": "Karnataka",
+    "source": "hand-labeled/synthetic"
+  },
+  {
+    "id": "NL-27",
+    "text": "Ferry services suspended between Ghogha and Dahej due to high sea swell; roll-on roll-off freight rerouted by road.",
+    "expected_type": "weather",
+    "expected_severity": "MEDIUM",
+    "expected_region": "Gujarat",
+    "source": "hand-labeled/synthetic"
+  },
+  {
+    "id": "NL-28",
+    "text": "Heavy hailstorm damages windshields of parked trailers at Sonipat multi-modal logistics terminal.",
+    "expected_type": "weather",
+    "expected_severity": "MEDIUM",
+    "expected_region": "Haryana",
+    "source": "hand-labeled/synthetic"
+  },
+  {
+    "id": "NL-29",
+    "text": "Bridge expansion joint maintenance on Vidyasagar Setu restricts heavy commercial goods vehicles to night hours.",
+    "expected_type": "infrastructure",
+    "expected_severity": "MEDIUM",
+    "expected_region": "West Bengal",
+    "source": "hand-labeled/synthetic"
+  },
+  {
+    "id": "NL-30",
+    "text": "Clear skies and optimal road conditions reported across NH44 Hyderabad-Bengaluru highway segment.",
+    "expected_type": "weather",
+    "expected_severity": "LOW",
+    "expected_region": "Andhra Pradesh",
+    "source": "hand-labeled/synthetic"
+  }
+]

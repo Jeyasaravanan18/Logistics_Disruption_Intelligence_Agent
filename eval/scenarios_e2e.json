@@ -1,0 +1,242 @@
+[
+  {
+    "scenario_id": "SC-01",
+    "name": "Direct High-Severity Weather on Critical Medical Shipment",
+    "shipment": {
+      "shipment_id": "SH-SC01",
+      "origin": "Chennai",
+      "destination": "Madurai",
+      "route_highway": "NH44",
+      "latitude": 9.9252,
+      "longitude": 78.1198,
+      "delivery_priority": "CRITICAL",
+      "cargo_type": "Medical Supplies"
+    },
+    "disruption": {
+      "type": "weather",
+      "subtype": "Flash Floods",
+      "lat": 9.9300,
+      "lon": 78.1250,
+      "radius_km": 50,
+      "severity": "HIGH",
+      "location": "Madurai"
+    },
+    "expected_risk_level": "HIGH"
+  },
+  {
+    "scenario_id": "SC-02",
+    "name": "Distant Low Disruption on Express Electronics Corridor",
+    "shipment": {
+      "shipment_id": "SH-SC02",
+      "origin": "Bengaluru",
+      "destination": "Chennai",
+      "route_highway": "NH48",
+      "latitude": 12.9716,
+      "longitude": 77.5946,
+      "delivery_priority": "HIGH",
+      "cargo_type": "Consumer Electronics"
+    },
+    "disruption": {
+      "type": "weather",
+      "subtype": "Light Drizzle",
+      "lat": 17.3850,
+      "lon": 78.4867,
+      "radius_km": 30,
+      "severity": "LOW",
+      "location": "Hyderabad"
+    },
+    "expected_risk_level": "SAFE"
+  },
+  {
+    "scenario_id": "SC-03",
+    "name": "Direct Highway Blockade on High Priority Auto Parts",
+    "shipment": {
+      "shipment_id": "SH-SC03",
+      "origin": "Pune",
+      "destination": "Mumbai",
+      "route_highway": "Mumbai-Pune Expressway",
+      "latitude": 18.7500,
+      "longitude": 73.4000,
+      "delivery_priority": "HIGH",
+      "cargo_type": "Automotive Components"
+    },
+    "disruption": {
+      "type": "news",
+      "subtype": "Landslide Closure",
+      "lat": 18.7550,
+      "lon": 73.4050,
+      "radius_km": 40,
+      "severity": "HIGH",
+      "location": "Khandala"
+    },
+    "expected_risk_level": "HIGH"
+  },
+  {
+    "scenario_id": "SC-04",
+    "name": "Moderate Highway Fog Advisory on Standard Grain Freight",
+    "shipment": {
+      "shipment_id": "SH-SC04",
+      "origin": "Delhi",
+      "destination": "Jaipur",
+      "route_highway": "NH48",
+      "latitude": 27.5000,
+      "longitude": 76.5000,
+      "delivery_priority": "LOW",
+      "cargo_type": "Grain Bulk"
+    },
+    "disruption": {
+      "type": "weather",
+      "subtype": "Dense Fog",
+      "lat": 27.4800,
+      "lon": 76.4500,
+      "radius_km": 60,
+      "severity": "MEDIUM",
+      "location": "Kotputli"
+    },
+    "expected_risk_level": "MEDIUM"
+  },
+  {
+    "scenario_id": "SC-05",
+    "name": "Minor Port Staging Slowdown on Standard Machinery",
+    "shipment": {
+      "shipment_id": "SH-SC05",
+      "origin": "Coimbatore",
+      "destination": "Kochi",
+      "route_highway": "NH544",
+      "latitude": 9.9312,
+      "longitude": 76.2673,
+      "delivery_priority": "MEDIUM",
+      "cargo_type": "Textile Machinery"
+    },
+    "disruption": {
+      "type": "news",
+      "subtype": "Port Trailer Queue",
+      "lat": 10.0500,
+      "lon": 76.3500,
+      "radius_km": 25,
+      "severity": "LOW",
+      "location": "Kochi Port Peripheral"
+    },
+    "expected_risk_level": "LOW"
+  },
+  {
+    "scenario_id": "SC-06",
+    "name": "Complete Interstate Corridor Sealed on Hazardous Chemicals",
+    "shipment": {
+      "shipment_id": "SH-SC06",
+      "origin": "Surat",
+      "destination": "Mumbai",
+      "route_highway": "NH48",
+      "latitude": 20.3800,
+      "longitude": 72.9100,
+      "delivery_priority": "CRITICAL",
+      "cargo_type": "Industrial Solvents"
+    },
+    "disruption": {
+      "type": "news",
+      "subtype": "Hazardous Gas Leak Blockade",
+      "lat": 20.3900,
+      "lon": 72.9050,
+      "radius_km": 35,
+      "severity": "HIGH",
+      "location": "Vapi"
+    },
+    "expected_risk_level": "HIGH"
+  },
+  {
+    "scenario_id": "SC-07",
+    "name": "Unrelated Regional Rain on Nominal Southern Transit",
+    "shipment": {
+      "shipment_id": "SH-SC07",
+      "origin": "Hyderabad",
+      "destination": "Nagpur",
+      "route_highway": "NH44",
+      "latitude": 19.5000,
+      "longitude": 78.5000,
+      "delivery_priority": "MEDIUM",
+      "cargo_type": "FMCG Goods"
+    },
+    "disruption": {
+      "type": "weather",
+      "subtype": "Coastal Thunderstorm",
+      "lat": 13.0827,
+      "lon": 80.2707,
+      "radius_km": 50,
+      "severity": "HIGH",
+      "location": "Chennai"
+    },
+    "expected_risk_level": "SAFE"
+  },
+  {
+    "scenario_id": "SC-08",
+    "name": "Intermediate Toll Protest on Fast Express Delivery",
+    "shipment": {
+      "shipment_id": "SH-SC08",
+      "origin": "Agra",
+      "destination": "Noida",
+      "route_highway": "Yamuna Expressway",
+      "latitude": 27.8000,
+      "longitude": 77.6000,
+      "delivery_priority": "HIGH",
+      "cargo_type": "E-Commerce Parcels"
+    },
+    "disruption": {
+      "type": "civil_unrest",
+      "subtype": "Toll Plaza Demonstration",
+      "lat": 27.7900,
+      "lon": 77.5900,
+      "radius_km": 30,
+      "severity": "HIGH",
+      "location": "Mathura Toll"
+    },
+    "expected_risk_level": "HIGH"
+  },
+  {
+    "scenario_id": "SC-09",
+    "name": "Moderate Road Resurfacing on Low Priority Aggregates",
+    "shipment": {
+      "shipment_id": "SH-SC09",
+      "origin": "Jaipur",
+      "destination": "Kota",
+      "route_highway": "NH52",
+      "latitude": 25.8000,
+      "longitude": 75.8000,
+      "delivery_priority": "LOW",
+      "cargo_type": "Building Sand"
+    },
+    "disruption": {
+      "type": "infrastructure",
+      "subtype": "Single-Lane Resurfacing",
+      "lat": 25.8800,
+      "lon": 75.8600,
+      "radius_km": 20,
+      "severity": "MEDIUM",
+      "location": "NH52 Service Bypass"
+    },
+    "expected_risk_level": "LOW"
+  },
+  {
+    "scenario_id": "SC-10",
+    "name": "High Heat Wave on Temperature Sensitive Pharmaceuticals",
+    "shipment": {
+      "shipment_id": "SH-SC10",
+      "origin": "Nagpur",
+      "destination": "Bhopal",
+      "route_highway": "NH46",
+      "latitude": 21.8000,
+      "longitude": 78.0000,
+      "delivery_priority": "CRITICAL",
+      "cargo_type": "Vaccines & Insulin"
+    },
+    "disruption": {
+      "type": "weather",
+      "subtype": "Severe Heatwave (>46C)",
+      "lat": 21.8200,
+      "lon": 78.0100,
+      "radius_km": 80,
+      "severity": "HIGH",
+      "location": "Betul"
+    },
+    "expected_risk_level": "HIGH"
+  }
+]
